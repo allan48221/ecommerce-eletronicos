@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ecommerce-eletronicos
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DB_HOST
+        sync: false   # você preenche no painel do Render
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
