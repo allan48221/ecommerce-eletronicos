@@ -28,7 +28,8 @@ try {
         'msg'   => 'Erro de conexão com o banco: ' . $e->getMessage()
     ]));
 }
-
+require_once __DIR__ . '/tenant.php';
+carregar_tenant($conn);
 // ============================================================
 //  FUNÇÕES AUXILIARES
 // ============================================================
