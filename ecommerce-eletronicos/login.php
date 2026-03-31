@@ -226,14 +226,6 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
             Fazer Login
         </h1>
 
-        <?php if (!empty($_SESSION['plano_nome'])): ?>
-        <div class="plano-badge">
-            Plano: <?= htmlspecialchars($_SESSION['plano_nome']) ?>
-            &nbsp;·&nbsp;
-            Vence: <?= date('d/m/Y', strtotime($_SESSION['plano_vencimento'])) ?>
-        </div>
-        <?php endif; ?>
-
         <?php if ($mensagem): ?>
         <div class="alert alert-<?= $tipo_mensagem ?>"><?= $mensagem ?></div>
         <?php endif; ?>
