@@ -41,6 +41,7 @@ COPY . /var/www/html/
 RUN chown -R www-data:www-data /var/www/html \
     && find /var/www/html -type f -name "*.php" -exec chmod 644 {} \; \
     && find /var/www/html -type d -exec chmod 755 {} \;
+    RUN echo "DirectoryIndex index.php index.html" >> /etc/apache2/apache2.conf
 
 EXPOSE 80
 
