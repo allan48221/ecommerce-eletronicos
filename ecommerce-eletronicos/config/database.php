@@ -12,7 +12,7 @@ define('DB_USER',     getenv('DB_USER')     ?: 'postgres');
 define('DB_PASSWORD', getenv('DB_PASSWORD') ?: 'Allan2021.');
 
 try {
-    $dsn = "pgsql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME;
+  $dsn = "pgsql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";sslmode=require";
 
     $conn = new PDO($dsn, DB_USER, DB_PASSWORD, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
