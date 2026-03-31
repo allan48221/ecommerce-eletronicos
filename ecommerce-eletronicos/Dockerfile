@@ -36,7 +36,7 @@ RUN echo "upload_max_filesize = 20M" >> /usr/local/etc/php/conf.d/uploads.ini \
 
 # Copia todos os arquivos do projeto para dentro do container
 COPY . /var/www/html/
-RUN cp -r /var/www/html/ecommerce-eletronicos/. /var/www/html/ && rm -rf /var/www/html/ecommerce-eletronicos
+RUN cp -r /var/www/html/ecommerce-eletronicos-1/. /var/www/html/ && rm -rf /var/www/html/ecommerce-eletronicos-1
 
 # Permissões corretas nos arquivos
 RUN chown -R www-data:www-data /var/www/html \
