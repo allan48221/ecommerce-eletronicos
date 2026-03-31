@@ -248,7 +248,7 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
                 'atendente' => 'atendente',
                 'caixa'     => 'caixa',
             ];
-            $icons = ['admin'=>'🔑','vendedor'=>'🛒','atendente'=>'📋','caixa'=>'💰'];
+            $icons = ['admin'=>'','vendedor'=>'','atendente'=>'','caixa'=>''];
             $labels = ['admin'=>'Admin','vendedor'=>'Vendedor','atendente'=>'Atendente','caixa'=>'Caixa'];
             foreach (['admin','vendedor','atendente','caixa'] as $tipo):
                 // Admin sempre liberado; staff verifica plano
