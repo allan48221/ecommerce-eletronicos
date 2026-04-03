@@ -237,7 +237,15 @@ $planos = $conn->query("SELECT * FROM planos WHERE ativo = TRUE ORDER BY preco")
         <tr>
             <td><?= $t['id_tenant'] ?></td>
             <td><strong><?= htmlspecialchars($t['nome']) ?></strong></td>
-            <td><code><?= htmlspecialchars($t['subdominio']) ?>.seusite.com</code></td>
+           <?php 
+$base_url = 'https://ecommerce-eletronicos-1.onrender.com';
+$link = $base_url . '/login.php?tenant=' . htmlspecialchars($t['subdominio']);
+?>
+<td>
+    <a href="<?= $link ?>" target="_blank" style="font-size:11px;color:#2563eb;">
+        <?= $link ?>
+    </a>
+</td>
             <td><?= htmlspecialchars($t['plano_nome'] ?? '—') ?></td>
             <td><?= $venc ? date('d/m/Y', strtotime($venc)) : '—' ?></td>
             <td>
