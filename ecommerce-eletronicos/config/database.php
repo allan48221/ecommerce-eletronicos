@@ -1,4 +1,7 @@
 <?php
+ini_set('session.save_path', '/tmp');
+ini_set('session.gc_maxlifetime', 86400);
+session_start();
 // =====================================================
 //  CONEXÃO — usa variáveis de ambiente (Render/Docker)
 // =====================================================
@@ -7,7 +10,6 @@ define('DB_PORT',     getenv('DB_PORT')     ?: '5432');
 define('DB_NAME',     getenv('DB_NAME')     ?: 'ecommerce_eletronicos');
 define('DB_USER',     getenv('DB_USER')     ?: 'postgres');
 define('DB_PASSWORD', getenv('DB_PASSWORD') ?: 'Allan2021.');
-
 try {
     $dsn = "pgsql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";sslmode=require";
     $conn = new PDO($dsn, DB_USER, DB_PASSWORD, [
@@ -22,28 +24,8 @@ try {
         'msg'   => 'Erro de conexão com o banco: ' . $e->getMessage()
     ]));
 }
-
 require_once __DIR__ . '/tenant.php';
 carregar_tenant($conn);
-
-// =====================================================
-//  SESSÃO NO POSTGRESQL (resolve problema do Render)
-// =====================================================
-require_once __DIR__ . '/session_handler.php';
-
-$handler = new DBSessionHandler($conn);
-session_set_save_handler($handler, true);
-
-session_set_cookie_params([
-    'lifetime' => 86400,
-    'path'     => '/',
-    'secure'   => true,
-    'httponly' => true,
-    'samesite' => 'Lax'
-]);
-
-session_start();
-
 // ============================================================
 //  FUNÇÕES AUXILIARES
 // ============================================================
