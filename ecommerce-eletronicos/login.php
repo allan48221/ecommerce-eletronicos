@@ -11,15 +11,6 @@
 require_once 'config/database.php';  // já carrega tenant.php e valida licença
 require_once 'config/tema.php';
 
-echo "<pre>";
-echo "Host: " . $_SERVER['HTTP_HOST'] . "\n";
-echo "Tenant GET: " . ($_GET['tenant'] ?? 'nenhum') . "\n";
-echo "Tenant sessão: " . ($_SESSION['tenant_subdominio_url'] ?? 'nenhum') . "\n";
-echo "id_tenant sessão: " . ($_SESSION['id_tenant'] ?? 'nenhum') . "\n";
-echo "tenant_carregado: " . ($_SESSION['tenant_carregado'] ?? 'nenhum') . "\n";
-echo "</pre>";
-die();
-
 $mensagem      = '';
 $tipo_mensagem = '';
 
