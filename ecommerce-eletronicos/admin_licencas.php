@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?)
                 ")->execute([$nome, $subdominio, $cnpj, $email]);
 
-                $id_tenant = $conn->lastInsertId();
+                $id_tenant = $conn->lastInsertId('empresas_tenants_id_tenant_seq');
 
                 $conn->prepare("
                     INSERT INTO licencas (id_tenant, id_plano, data_vencimento)
