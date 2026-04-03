@@ -84,24 +84,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-   // Renovar/alterar licença
-if ($acao === 'renovar') {
-    $id_licenca = (int)$_POST['id_licenca'];
-    $id_plano   = !empty($_POST['id_plano']) ? (int)$_POST['id_plano'] : null;
-    $vencimento = !empty($_POST['data_vencimento']) ? $_POST['data_vencimento'] : null;
-    $ativo      = isset($_POST['ativo']) ? 'TRUE' : 'FALSE';
-
-    if ($id_licenca && $id_plano && $vencimento) {
+    // Renovar/alterar licença
+    if ($acao === 'renovar') {
+        $id_licenca = (int)$_POST['id_licenca'];
+        $id_plano   = (int)$_POST['id_plano'];
+        $vencimento = $_POST['data_vencimento'];
+        $ativo      = isset($_POST['ativo']) ? 'TRUE' : 'FALSE';
         $conn->prepare("
             UPDATE licencas
             SET id_plano = ?, data_vencimento = ?, ativo = $ativo
             WHERE id_licenca = ?
         ")->execute([$id_plano, $vencimento, $id_licenca]);
         $msg = "Licenca atualizada com sucesso.";
-    } else {
-        $msg = "ERRO: Preencha o plano e a data de vencimento.";
     }
-}
 
     // Mudar plano do tenant
     if ($acao === 'mudar_plano') {
@@ -454,9 +449,7 @@ function abrirRenovar(t) {
     document.getElementById('modal-titulo-renovar').textContent   = 'Renovar: ' + t.nome;
     document.getElementById('m_id_licenca').value  = t.id_licenca  || '';
     document.getElementById('m_id_plano').value    = t.id_plano    || '';
-    // Se não tiver vencimento, sugere 1 ano a partir de hoje
-    var venc = t.data_vencimento || new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0];
-    document.getElementById('m_vencimento').value  = venc;
+    document.getElementById('m_vencimento').value  = t.data_vencimento || '';
     document.getElementById('m_ativo').checked     = t.licenca_ativa == '1' || t.licenca_ativa === true;
 }
 
