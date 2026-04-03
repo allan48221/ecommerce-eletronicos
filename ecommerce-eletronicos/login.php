@@ -1,21 +1,22 @@
 <?php
 // ============================================================
 //  login.php — versão multi-tenant
-//  Mudanças em relação ao original:
-//   1. Login agora filtra por id_tenant (cada empresa só vê seus users)
-//   2. Sessão salva id_tenant + plano + telas_permitidas
-//   3. Admin só loga se a licença do tenant estiver válida
-//  O HTML/CSS ficou 100% igual ao original.
 // ============================================================
 
-require_once 'config/database.php';  // já carrega tenant.php e valida licença
+require_once 'config/database.php';
 require_once 'config/tema.php';
 
 $mensagem      = '';
 $tipo_mensagem = '';
 
-// Tenant já foi validado pelo database.php — se chegou aqui, licença OK
+// Preserva tenant via POST (quando formulário é submetido, perde o ?tenant= da URL)
+if (!empty($_POST['tenant'])) {
+    $_SESSION['tenant_subdominio_url'] = $_POST['tenant'];
+}
+
+// Tenant já foi validado pelo database.php
 $id_tenant = $_SESSION['id_tenant'] ?? null;
+$tenant_param = $_GET['tenant'] ?? $_SESSION['tenant_subdominio_url'] ?? '';
 
 if (isset($_SESSION['id_cliente'])) {
     header('Location: index.php');
@@ -43,18 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmt->execute([$email, $id_tenant]);
             $admin = $stmt->fetch();
-            // DEBUG TEMPORÁRIO
-echo "<pre>";
-echo "Email digitado: $email\n";
-echo "id_tenant usado na query: $id_tenant\n";
-echo "Admin encontrado: " . ($admin ? 'SIM' : 'NÃO') . "\n";
-if ($admin) {
-    echo "Senha hash no banco: " . $admin['senha'] . "\n";
-    echo "password_verify: " . (password_verify($senha, $admin['senha']) ? 'OK' : 'FALHOU') . "\n";
-    echo "Ativo: " . $admin['ativo'] . "\n";
-}
-echo "</pre>";
-die();
 
             if ($admin && password_verify($senha, $admin['senha'])) {
                 $_SESSION['id_admin']      = $admin['id_admin'];
@@ -99,7 +88,6 @@ die();
             $mensagem      = 'Preencha usuário e senha!';
             $tipo_mensagem = 'danger';
         } else {
-            // Busca na tabela staff filtrando por tenant
             $stmt = $conn->prepare("
                 SELECT * FROM staff
                 WHERE usuario = ?
@@ -110,7 +98,7 @@ die();
             $stmt->execute([$usuario, $tipo_login, $id_tenant]);
             $staff = $stmt->fetch();
 
-            // Fallback: tabela vendedores legada (sem id_tenant — migração gradual)
+            // Fallback: tabela vendedores legada
             if (!$staff && $tipo_login === 'vendedor') {
                 $stmt2 = $conn->prepare("
                     SELECT *, 'vendedor' AS tipo FROM vendedores
@@ -125,19 +113,15 @@ die();
                 $tipo     = $staff['tipo'];
                 $id_staff = $staff['id_staff'] ?? ($staff['id_vendedor'] ?? null);
 
-                // Sessão base
-                $_SESSION['id_staff']   = $id_staff;
-                $_SESSION['nome_staff'] = $staff['nome'];
-                $_SESSION['tipo_staff'] = $tipo;
-
-                // Compatibilidade legada
+                $_SESSION['id_staff']      = $id_staff;
+                $_SESSION['nome_staff']    = $staff['nome'];
+                $_SESSION['tipo_staff']    = $tipo;
                 $_SESSION['id_vendedor']   = $id_staff;
                 $_SESSION['nome_vendedor'] = $staff['nome'];
                 $_SESSION['is_vendedor']   = true;
                 $_SESSION['nome_admin']    = $staff['nome'];
                 $_SESSION['id_admin']      = $tipo . '_' . $id_staff;
 
-                // Verifica se este tipo de staff tem acesso à tela correspondente
                 $mapa_tela = [
                     'vendedor'  => 'venda_presencial',
                     'atendente' => 'atendente',
@@ -146,7 +130,6 @@ die();
                 $tela_destino = $mapa_tela[$tipo] ?? null;
 
                 if ($tela_destino && !tela_liberada($tela_destino)) {
-                    // Plano não inclui esta tela
                     session_destroy();
                     $mensagem      = 'Seu plano não inclui acesso a esta área. Contate o administrador.';
                     $tipo_mensagem = 'warning';
@@ -196,7 +179,6 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
         display: grid; grid-template-columns: repeat(4, 1fr);
         gap: 5px; margin-bottom: 16px;
     }
-    /* Esconde abas cujas telas não estão no plano */
     .tipo-btn { padding: 8px 3px; border: 1.5px solid #e2e8f0; border-radius: 8px;
         background: #f8fafc; cursor: pointer; text-align: center;
         transition: all .2s; font-family: inherit; }
@@ -213,11 +195,6 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
         text-align: center; font-size: 10px; color: #64748b;
         background: #f8fafc; border-radius: 8px; padding: 5px 8px;
         margin-bottom: 12px; border: 1px solid #e2e8f0; min-height: 24px;
-    }
-    .plano-badge {
-        text-align: center; font-size: 10px; font-weight: 700;
-        color: #0f766e; background: #f0fdfa; border: 1px solid #99f6e4;
-        border-radius: 6px; padding: 4px 10px; margin-bottom: 10px;
     }
     .form-group { margin-bottom: 11px; }
     .form-group label { font-size: 11px; font-weight: 600; margin-bottom: 4px; display: block; color: #475569; }
@@ -242,20 +219,17 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
         <div class="alert alert-<?= $tipo_mensagem ?>"><?= $mensagem ?></div>
         <?php endif; ?>
 
-        <!-- SELETOR DE TIPO -->
         <div class="tipo-selector">
             <?php
-            // Mapeamento: tipo_login => chave da tela
             $telas_tipo = [
                 'admin'     => 'admin',
                 'vendedor'  => 'venda_presencial',
                 'atendente' => 'atendente',
                 'caixa'     => 'caixa',
             ];
-            $icons = ['admin'=>'','vendedor'=>'','atendente'=>'','caixa'=>''];
+            $icons  = ['admin'=>'🔐','vendedor'=>'🛍️','atendente'=>'🧾','caixa'=>'💰'];
             $labels = ['admin'=>'Admin','vendedor'=>'Vendedor','atendente'=>'Atendente','caixa'=>'Caixa'];
             foreach (['admin','vendedor','atendente','caixa'] as $tipo):
-                // Admin sempre liberado; staff verifica plano
                 $liberado = ($tipo === 'admin') || tela_liberada($telas_tipo[$tipo]);
                 $ativo    = $aba_ativa === $tipo ? 'ativo' : '';
                 $bloq     = !$liberado ? 'bloqueado' : '';
@@ -272,6 +246,8 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
 
         <form method="POST" id="form-login">
             <input type="hidden" name="tipo_login" id="tipo_login" value="<?= $aba_ativa ?>">
+            <!-- Preserva o tenant ao fazer POST (perde o ?tenant= da URL) -->
+            <input type="hidden" name="tenant" value="<?= htmlspecialchars($tenant_param) ?>">
 
             <div class="login-hint" id="login-hint"></div>
 
@@ -314,10 +290,10 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
 <script src="js/main.js"></script>
 <script>
 const hints = {
-    admin:     ' Acesso ao painel administrativo completo',
-    vendedor:  ' Acesso à tela de Venda Presencial',
-    atendente: ' Acesso à tela de Lançar Comanda',
-    caixa:     ' Acesso ao Painel do Caixa',
+    admin:     '🔐 Acesso ao painel administrativo completo',
+    vendedor:  '🛍️ Acesso à tela de Venda Presencial',
+    atendente: '🧾 Acesso à tela de Lançar Comanda',
+    caixa:     '💰 Acesso ao Painel do Caixa',
 };
 
 function selecionarTipo(tipo) {
