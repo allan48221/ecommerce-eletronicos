@@ -14,17 +14,24 @@
 
 // ── Detectar subdomínio ──────────────────────────────────────
 function detectar_subdominio(): string {
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    $host = explode(':', $host)[0]; // remove porta se houver
-
-    $partes = explode('.', $host);
-
-    // localhost ou domínio simples sem subdomínio → tenant principal
-    if (count($partes) <= 1 || $host === 'localhost') {
-        return 'principal';
+    // 1. Prioridade: parâmetro GET ?tenant=xxx
+    if (!empty($_GET['tenant'])) {
+        $_SESSION['tenant_subdominio_url'] = $_GET['tenant'];
+    }
+    
+    // 2. Se já tem na sessão, usa ele
+    if (!empty($_SESSION['tenant_subdominio_url'])) {
+        return $_SESSION['tenant_subdominio_url'];
     }
 
-    return $partes[0]; // ex: "empresanova" de "empresanova.seusite.com"
+    // 3. Fallback: tenta subdomínio real (para quando tiver domínio próprio)
+    $host   = explode(':', $_SERVER['HTTP_HOST'] ?? '')[0];
+    $partes = explode('.', $host);
+    if (count($partes) > 2 && $host !== 'localhost') {
+        return $partes[0];
+    }
+
+    return 'principal';
 }
 // ── Carregar tenant na sessão ────────────────────────────────
 function carregar_tenant(PDO $conn): void {
