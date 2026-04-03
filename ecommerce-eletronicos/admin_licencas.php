@@ -107,7 +107,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ")->execute([$id_plano, $id_licenca]);
         $msg = "Plano alterado com sucesso.";
     }
-
+// Remover tenant e licença
+if ($acao === 'remover_tenant') {
+    $id_tenant = (int)$_POST['id_tenant'];
+    $conn->beginTransaction();
+    try {
+        $conn->prepare("DELETE FROM licencas WHERE id_tenant = ?")->execute([$id_tenant]);
+        $conn->prepare("DELETE FROM admins WHERE id_tenant = ?")->execute([$id_tenant]);
+        $conn->prepare("DELETE FROM empresas_tenants WHERE id_tenant = ?")->execute([$id_tenant]);
+        $conn->commit();
+        $msg = "Tenant removido com sucesso.";
+    } catch (\Exception $e) {
+        $conn->rollBack();
+        $msg = "ERRO ao remover: " . $e->getMessage();
+    }
+}
     // Bloquear/desbloquear tenant
     if ($acao === 'toggle_tenant') {
         $id_tenant = (int)$_POST['id_tenant'];
@@ -259,7 +273,13 @@ $planos = $conn->query("SELECT * FROM planos WHERE ativo = TRUE ORDER BY preco")
                         <?= $t['ativo'] ? 'Bloquear' : 'Ativar' ?>
                     </button>
                 </form>
-
+                  <!-- Remover tenant -->
+<form method="POST" style="display:inline"
+      onsubmit="return confirm('Tem certeza que deseja remover <?= htmlspecialchars($t['nome']) ?>?')">
+    <input type="hidden" name="acao"      value="remover_tenant">
+    <input type="hidden" name="id_tenant" value="<?= $t['id_tenant'] ?>">
+    <button type="submit" class="btn-sm btn-danger-sm">Remover</button>
+</form> 
             </td>
         </tr>
         <?php endforeach; ?>
