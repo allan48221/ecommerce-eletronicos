@@ -30,6 +30,8 @@ function detectar_subdominio(): string {
 function carregar_tenant(PDO $conn): void {
     // Se já carregou nesta sessão, não busca de novo
     if (!empty($_SESSION['tenant_carregado'])) {
+        $id = $_SESSION['id_tenant'] ?? null;
+    if ($id) $conn->exec("SET app.tenant_id = '$id'");
         return;
     }
 
