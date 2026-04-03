@@ -2,6 +2,12 @@
 require_once 'config/database.php';
 require_once 'config/tema.php';
 
+if (!empty($_COOKIE['carrinho']) && empty($_SESSION['carrinho'])) {
+    $decoded = json_decode(base64_decode($_COOKIE['carrinho']), true);
+    if (is_array($decoded)) $_SESSION['carrinho'] = $decoded;
+}
+
+
 if (!isset($_SESSION['carrinho'])) {
     $_SESSION['carrinho'] = [];
 }
