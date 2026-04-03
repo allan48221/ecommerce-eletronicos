@@ -91,6 +91,9 @@ function carregar_tenant(PDO $conn): void {
     $_SESSION['plano_vencimento']   = $tenant['data_vencimento'];
     $_SESSION['telas_permitidas']   = $telas;
     $_SESSION['tenant_carregado']   = true;
+    
+    // Seta o tenant no PostgreSQL para o RLS funcionar
+    $conn->exec("SET app.tenant_id = '{$tenant['id_tenant']}'");
 }
 
 // ── Verificar acesso a uma tela específica ───────────────────
