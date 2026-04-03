@@ -52,6 +52,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmt->execute([$email, $id_tenant]);
             $admin = $stmt->fetch();
+            // DEBUG TEMPORÁRIO
+echo "<pre>";
+echo "Email digitado: $email\n";
+echo "id_tenant usado na query: $id_tenant\n";
+echo "Admin encontrado: " . ($admin ? 'SIM' : 'NÃO') . "\n";
+if ($admin) {
+    echo "Senha hash no banco: " . $admin['senha'] . "\n";
+    echo "password_verify: " . (password_verify($senha, $admin['senha']) ? 'OK' : 'FALHOU') . "\n";
+    echo "Ativo: " . $admin['ativo'] . "\n";
+}
+echo "</pre>";
+die();
 
             if ($admin && password_verify($senha, $admin['senha'])) {
                 $_SESSION['id_admin']      = $admin['id_admin'];
