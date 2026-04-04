@@ -1,30 +1,26 @@
 <?php
-// ============================================================
-//  login.php — versão multi-tenant
-// ============================================================
+// Salva tenant ANTES do database.php processar a sessão
+if (isset($_POST['tenant']) && !empty($_POST['tenant'])) {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    $_SESSION['tenant_subdominio_url'] = $_POST['tenant'];
+    $_SESSION['tenant_carregado'] = false;
+    session_write_close();
+}
+if (isset($_GET['tenant']) && !empty($_GET['tenant'])) {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    $_SESSION['tenant_subdominio_url'] = $_GET['tenant'];
+    $_SESSION['tenant_carregado'] = false;
+    session_write_close();
+}
 
 require_once 'config/database.php';
 require_once 'config/tema.php';
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 
 $mensagem      = '';
 $tipo_mensagem = '';
 
-// Preserva tenant via POST (quando formulário é submetido, perde o ?tenant= da URL)
-if (!empty($_POST['tenant'])) {
-    $_SESSION['tenant_subdominio_url'] = $_POST['tenant'];
-}
-
-// Tenant já foi validado pelo database.php
-$id_tenant = $_SESSION['id_tenant'] ?? null;
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    error_log("DEBUG LOGIN - id_tenant: " . $id_tenant);
-    error_log("DEBUG LOGIN - tenant_url: " . ($_SESSION['tenant_subdominio_url'] ?? 'nenhum'));
-    error_log("DEBUG LOGIN - POST tenant: " . ($_POST['tenant'] ?? 'nenhum'));
-    error_log("DEBUG LOGIN - tenant_carregado: " . ($_SESSION['tenant_carregado'] ?? 'nenhum'));
-}
-$tenant_param = $_GET['tenant'] ?? $_SESSION['tenant_subdominio_url'] ?? '';
+$id_tenant    = $_SESSION['id_tenant'] ?? null;
+$tenant_param = $_SESSION['tenant_subdominio_url'] ?? '';
 
 if (isset($_SESSION['id_cliente'])) {
     header('Location: index.php');
@@ -36,14 +32,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $senha      = $_POST['senha']      ?? '';
 
     if ($tipo_login === 'admin') {
-        // ── LOGIN ADMIN ──────────────────────────────────────
         $email = trim($_POST['email'] ?? '');
 
         if (empty($email) || empty($senha)) {
             $mensagem      = 'Preencha todos os campos!';
             $tipo_mensagem = 'danger';
         } else {
-            // 1) Tenta na tabela admins (filtra por tenant)
             $stmt = $conn->prepare("
                 SELECT * FROM admins
                 WHERE email = ?
@@ -62,7 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
-            // 2) Tenta na tabela staff tipo='admin' (filtra por tenant)
             $stmt2 = $conn->prepare("
                 SELECT * FROM staff
                 WHERE usuario = ?
@@ -89,7 +82,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
     } else {
-        // ── LOGIN STAFF (vendedor / atendente / caixa) ───────
         $usuario = trim($_POST['usuario'] ?? '');
 
         if (empty($usuario) || empty($senha)) {
@@ -106,7 +98,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$usuario, $tipo_login, $id_tenant]);
             $staff = $stmt->fetch();
 
-            // Fallback: tabela vendedores legada
             if (!$staff && $tipo_login === 'vendedor') {
                 $stmt2 = $conn->prepare("
                     SELECT *, 'vendedor' AS tipo FROM vendedores
@@ -130,11 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['nome_admin']    = $staff['nome'];
                 $_SESSION['id_admin']      = $tipo . '_' . $id_staff;
 
-                $mapa_tela = [
-                    'vendedor'  => 'venda_presencial',
-                    'atendente' => 'atendente',
-                    'caixa'     => 'caixa',
-                ];
+                $mapa_tela    = ['vendedor' => 'venda_presencial', 'atendente' => 'atendente', 'caixa' => 'caixa'];
                 $tela_destino = $mapa_tela[$tipo] ?? null;
 
                 if ($tela_destino && !tela_liberada($tela_destino)) {
@@ -142,11 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $mensagem      = 'Seu plano não inclui acesso a esta área. Contate o administrador.';
                     $tipo_mensagem = 'warning';
                 } else {
-                    $destinos = [
-                        'vendedor'  => 'venda_presencial.php',
-                        'atendente' => 'atendente.php',
-                        'caixa'     => 'caixa.php',
-                    ];
+                    $destinos = ['vendedor' => 'venda_presencial.php', 'atendente' => 'atendente.php', 'caixa' => 'caixa.php'];
                     header('Location: ' . ($destinos[$tipo] ?? 'index.php'));
                     exit;
                 }
@@ -173,43 +156,24 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
     <?= aplicar_tema($conn) ?>
     <style>
     * { box-sizing: border-box; }
-    body {
-        display: flex; flex-direction: column; justify-content: center;
-        align-items: center; min-height: 100vh;
-        background: var(--dash-bg, #f1f5f9); padding: 16px;
-    }
+    body { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; background: var(--dash-bg, #f1f5f9); padding: 16px; }
     .login-container { max-width: 380px; width: 100%; }
-    .card {
-        border-radius: 14px !important; padding: 14px 12px !important;
-        box-shadow: 0 4px 24px rgba(0,0,0,.08) !important;
-    }
-    .tipo-selector {
-        display: grid; grid-template-columns: repeat(4, 1fr);
-        gap: 5px; margin-bottom: 16px;
-    }
-    .tipo-btn { padding: 8px 3px; border: 1.5px solid #e2e8f0; border-radius: 8px;
-        background: #f8fafc; cursor: pointer; text-align: center;
-        transition: all .2s; font-family: inherit; }
+    .card { border-radius: 14px !important; padding: 14px 12px !important; box-shadow: 0 4px 24px rgba(0,0,0,.08) !important; }
+    .tipo-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 16px; }
+    .tipo-btn { padding: 8px 3px; border: 1.5px solid #e2e8f0; border-radius: 8px; background: #f8fafc; cursor: pointer; text-align: center; transition: all .2s; font-family: inherit; }
     .tipo-btn.bloqueado { opacity: 0.35; cursor: not-allowed; filter: grayscale(1); }
     .tipo-btn .tipo-icon  { font-size: 14px; display: block; margin-bottom: 2px; }
     .tipo-btn .tipo-label { font-size: 9px; font-weight: 700; color: #64748b; display: block; }
     .tipo-btn:not(.bloqueado):hover { border-color: var(--primary); background: #eff6ff; }
-    .tipo-btn.ativo { border-color: var(--primary); background: #fff;
-        box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .tipo-btn.ativo { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
     .tipo-btn.ativo .tipo-label { color: var(--primary); }
     .campo-grupo { display: none; }
     .campo-grupo.show { display: block; }
-    .login-hint {
-        text-align: center; font-size: 10px; color: #64748b;
-        background: #f8fafc; border-radius: 8px; padding: 5px 8px;
-        margin-bottom: 12px; border: 1px solid #e2e8f0; min-height: 24px;
-    }
+    .login-hint { text-align: center; font-size: 10px; color: #64748b; background: #f8fafc; border-radius: 8px; padding: 5px 8px; margin-bottom: 12px; border: 1px solid #e2e8f0; min-height: 24px; }
     .form-group { margin-bottom: 11px; }
     .form-group label { font-size: 11px; font-weight: 600; margin-bottom: 4px; display: block; color: #475569; }
-    .form-control { height: 38px !important; font-size: 13px !important;
-        border-radius: 9px !important; padding: 0 11px !important; }
-    .btn-primary { height: 40px !important; font-size: 13px !important;
-        border-radius: 9px !important; margin-top: 6px !important; }
+    .form-control { height: 38px !important; font-size: 13px !important; border-radius: 9px !important; padding: 0 11px !important; }
+    .btn-primary { height: 40px !important; font-size: 13px !important; border-radius: 9px !important; margin-top: 6px !important; }
     .card-title { font-size: 1rem !important; margin: 0.25rem auto 1rem !important; }
     .btn-seta { font-size: 13px; }
     </style>
@@ -229,12 +193,7 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
 
         <div class="tipo-selector">
             <?php
-            $telas_tipo = [
-                'admin'     => 'admin',
-                'vendedor'  => 'venda_presencial',
-                'atendente' => 'atendente',
-                'caixa'     => 'caixa',
-            ];
+            $telas_tipo = ['admin' => 'admin', 'vendedor' => 'venda_presencial', 'atendente' => 'atendente', 'caixa' => 'caixa'];
             $icons  = ['admin'=>'🔐','vendedor'=>'🛍️','atendente'=>'🧾','caixa'=>'💰'];
             $labels = ['admin'=>'Admin','vendedor'=>'Vendedor','atendente'=>'Atendente','caixa'=>'Caixa'];
             foreach (['admin','vendedor','atendente','caixa'] as $tipo):
@@ -254,12 +213,10 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
 
         <form method="POST" id="form-login">
             <input type="hidden" name="tipo_login" id="tipo_login" value="<?= $aba_ativa ?>">
-            <!-- Preserva o tenant ao fazer POST (perde o ?tenant= da URL) -->
             <input type="hidden" name="tenant" value="<?= htmlspecialchars($tenant_param) ?>">
 
             <div class="login-hint" id="login-hint"></div>
 
-            <!-- CAMPO EMAIL (admin) -->
             <div class="campo-grupo <?= $aba_ativa==='admin' ? 'show':'' ?>" id="campos-admin">
                 <div class="form-group">
                     <label for="email">Email</label>
@@ -270,7 +227,6 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
                 </div>
             </div>
 
-            <!-- CAMPO USUÁRIO (vendedor / atendente / caixa) -->
             <div class="campo-grupo <?= in_array($aba_ativa,['vendedor','atendente','caixa']) ? 'show':'' ?>" id="campos-staff">
                 <div class="form-group">
                     <label for="usuario">Usuário</label>
@@ -281,7 +237,6 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
                 </div>
             </div>
 
-            <!-- SENHA -->
             <div class="form-group">
                 <label for="senha">Senha</label>
                 <input type="password" class="form-control" id="senha" name="senha"
