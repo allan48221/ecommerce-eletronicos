@@ -7,6 +7,8 @@ if (!isset($_SESSION['id_admin'])) {
     exit;
 }
 $is_master = empty($_SESSION['id_tenant']);
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+
 // PostgreSQL: INTERVAL com sintaxe correta
 $conn->query("UPDATE pedidos SET status = 'expirado', data_acao = NOW()
               WHERE status = 'pendente' AND data_pedido < NOW() - INTERVAL '24 hours'");
@@ -19,17 +21,46 @@ $stats['total_pedidos']  = $conn->query("SELECT COUNT(*) FROM compras")->fetchCo
 $stats['total_vendas']   = $conn->query("SELECT COALESCE(SUM(valor_total),0) FROM compras")->fetchColumn();
 $stats['estoque_baixo']  = $conn->query("SELECT COUNT(*) FROM produtos WHERE estoque < 10 AND ativo = TRUE")->fetchColumn();
 
-$mais_vistos = $conn->query("SELECT p.id_produto, p.nome, p.imagem, p.preco, COUNT(pv.id) as total_views
-    FROM produto_views pv JOIN produtos p ON pv.id_produto = p.id_produto
-    WHERE p.ativo = TRUE GROUP BY p.id_produto, p.nome, p.imagem, p.preco ORDER BY total_views DESC LIMIT 3");
+// Top 3 mais vistos — filtrado por tenant
+if ($is_master) {
+    $mais_vistos = $conn->query("
+        SELECT p.id_produto, p.nome, p.imagem, p.preco, COUNT(pv.id) as total_views
+        FROM produto_views pv JOIN produtos p ON pv.id_produto = p.id_produto
+        WHERE p.ativo = TRUE
+        GROUP BY p.id_produto, p.nome, p.imagem, p.preco
+        ORDER BY total_views DESC LIMIT 3
+    ");
+} else {
+    $mais_vistos = $conn->prepare("
+        SELECT p.id_produto, p.nome, p.imagem, p.preco, COUNT(pv.id) as total_views
+        FROM produto_views pv JOIN produtos p ON pv.id_produto = p.id_produto
+        WHERE p.ativo = TRUE AND p.id_tenant = ?
+        GROUP BY p.id_produto, p.nome, p.imagem, p.preco
+        ORDER BY total_views DESC LIMIT 3
+    ");
+    $mais_vistos->execute([$id_tenant]);
+}
 
-$todos_produtos = $conn->query("SELECT id_produto, nome, estoque, preco FROM produtos ORDER BY estoque ASC");
-$produtos_baixo = $conn->query("SELECT * FROM produtos WHERE estoque < 10 AND ativo = TRUE ORDER BY estoque ASC LIMIT 5");
+// Todos os produtos (estoque completo) — filtrado por tenant
+if ($is_master) {
+    $todos_produtos = $conn->query("SELECT id_produto, nome, estoque, preco FROM produtos ORDER BY estoque ASC");
+} else {
+    $todos_produtos = $conn->prepare("SELECT id_produto, nome, estoque, preco FROM produtos WHERE id_tenant = ? ORDER BY estoque ASC");
+    $todos_produtos->execute([$id_tenant]);
+}
+
+// Estoque baixo — filtrado por tenant
+if ($is_master) {
+    $produtos_baixo = $conn->query("SELECT * FROM produtos WHERE estoque < 10 AND ativo = TRUE ORDER BY estoque ASC LIMIT 5");
+} else {
+    $produtos_baixo = $conn->prepare("SELECT * FROM produtos WHERE estoque < 10 AND ativo = TRUE AND id_tenant = ? ORDER BY estoque ASC LIMIT 5");
+    $produtos_baixo->execute([$id_tenant]);
+}
 
 $filtro_pedido = $_GET['pedidos'] ?? 'pendente';
 if (!in_array($filtro_pedido, ['pendente','confirmado','cancelado','expirado','todos'])) $filtro_pedido = 'pendente';
 
-// PDO: sem interpolação de variável no WHERE — usar prepare
+// PDO: sem interpolacao de variavel no WHERE - usar prepare
 if ($filtro_pedido === 'todos') {
     $stmt_pedidos = $conn->query("SELECT * FROM pedidos ORDER BY data_pedido DESC");
 } else {
@@ -58,9 +89,7 @@ if ($res_cores) {
     <link rel="icon" type="image/png" href="favicon.png?v=1">
     <?= aplicar_tema($conn) ?>
     <style>
-  /* ═══════════════════════════════
-           BASE
-        ═══════════════════════════════ */
+        /* BASE */
         * { box-sizing: border-box; }
 
         .admin-header {
@@ -98,7 +127,7 @@ if ($res_cores) {
         }
         .action-btn:hover { background: var(--primary); color: white; }
 
-        /* ── NOTIFICAÇÃO ── */
+        /* NOTIFICACAO */
         .notif-wrap { position: relative; display: inline-block; font-size: 1.8rem; text-decoration: none; }
         .notif-badge-count {
             position: absolute; top: -6px; right: -10px;
@@ -108,7 +137,7 @@ if ($res_cores) {
         }
         @keyframes pulsar { 0%,100%{transform:scale(1)}50%{transform:scale(1.25)} }
 
-        /* ── TOP 3 ── */
+        /* TOP 3 */
         .top-produtos-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.8rem; }
         .top-produto-card {
             background: white; border-radius: 0.75rem; padding: 1rem 0.8rem;
@@ -128,7 +157,7 @@ if ($res_cores) {
         .prod-views { font-size: 0.72rem; color: var(--gray); }
         .prod-views span { font-weight: 700; color: var(--primary); }
 
-        /* ── ESTOQUE ── */
+        /* ESTOQUE */
         table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         table th { background: var(--light); padding: 0.7rem 0.6rem; text-align: left; font-weight: 600; color: var(--dark); font-size: 0.82rem; }
         table td { padding: 0.6rem; border-bottom: 1px solid var(--light); }
@@ -144,7 +173,7 @@ if ($res_cores) {
         }
         .btn-editar-produto:hover { background:#007bff;color:#fff; }
 
-        /* ── PEDIDOS ── */
+        /* PEDIDOS */
         .pedidos-abas { display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1rem; }
         .pedidos-aba {
             padding:0.3rem 0.8rem;border-radius:2rem;text-decoration:none;
@@ -229,7 +258,7 @@ if ($res_cores) {
         .pedidos-vazio {text-align:center;padding:1.5rem;color:#888}
         .pedidos-vazio span {font-size:2rem;display:block;margin-bottom:0.3rem}
 
-        /* ── TOAST ── */
+        /* TOAST */
         #p-toast {
             position:fixed;bottom:1rem;right:1rem;padding:0.75rem 1.2rem;
             border-radius:0.6rem;color:white;font-weight:600;font-size:0.85rem;
@@ -238,7 +267,7 @@ if ($res_cores) {
         #p-toast.sucesso {background:#198754}
         #p-toast.erro    {background:#dc3545}
 
-        /* ── TEMA ── */
+        /* TEMA */
         .tema-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1rem;margin-bottom:1.2rem}
         .tema-campo {display:flex;flex-direction:column;gap:0.35rem}
         .tema-campo label {font-size:0.85rem;font-weight:600;color:var(--dark)}
@@ -253,9 +282,7 @@ if ($res_cores) {
         .btn-salvar-tema:hover {transform:translateY(-2px)}
         #tema-feedback {display:none;margin-top:0.8rem;padding:0.75rem 1rem;border-radius:0.5rem;font-weight:600;font-size:0.9rem}
 
-        /* ═══════════════════════════════
-           MOBILE — tudo compacto
-        ═══════════════════════════════ */
+        /* MOBILE */
         @media (max-width: 768px) {
             .navbar { display: none !important; }
             .container { padding: 0 0.6rem !important; margin: 0.5rem auto !important; }
@@ -318,33 +345,32 @@ if ($res_cores) {
 
             .admin-grid { grid-template-columns: 1fr !important; }
         }
-        /* Botão "Ver Loja" — só aparece no mobile */
-/* Botão "Ver Loja" — só aparece no mobile */
-.btn-ver-loja-mobile {
-    display: none;
-}
 
-@media (max-width: 768px) {
-    .btn-ver-loja-mobile {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.4rem;
-        width: 100%;
-        padding: 0.65rem;
-        margin-bottom: 0.8rem;
-        background: linear-gradient(135deg, var(--primary), var(--primary-dark, #1e40af));
-        color: white;
-        font-weight: 700;
-        font-size: 0.82rem;
-        border-radius: 0.6rem;
-        text-decoration: none;
-        box-shadow: 0 3px 10px rgba(37,99,235,0.3);
-    }
-}
-.pil-adicionais {
-    display: block;
-}
+        .btn-ver-loja-mobile {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .btn-ver-loja-mobile {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.4rem;
+                width: 100%;
+                padding: 0.65rem;
+                margin-bottom: 0.8rem;
+                background: linear-gradient(135deg, var(--primary), var(--primary-dark, #1e40af));
+                color: white;
+                font-weight: 700;
+                font-size: 0.82rem;
+                border-radius: 0.6rem;
+                text-decoration: none;
+                box-shadow: 0 3px 10px rgba(37,99,235,0.3);
+            }
+        }
+        .pil-adicionais {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -360,10 +386,10 @@ if ($res_cores) {
 
     <div class="container">
 
-        <!-- CABEÇALHO -->
+        <!-- CABECALHO -->
         <div class="admin-header" style="background: white !important;">
             <div>
-                <h1>Olá, <?= htmlspecialchars($_SESSION['nome_admin']) ?>!</h1>
+                <h1>Ola, <?= htmlspecialchars($_SESSION['nome_admin']) ?>!</h1>
                 <p>Bem-vindo ao painel administrativo</p>
             </div>
             <?php if ($count_pendentes > 0): ?>
@@ -382,91 +408,92 @@ if ($res_cores) {
             <div class="vis-icon"></div>
             <div class="vis-info">
                 <div class="vis-numero" id="contador-visitantes">--</div>
-                <div class="vis-label"><span class="vis-dot"></span>Pessoas que já acessaram o site</div>
+                <div class="vis-label"><span class="vis-dot"></span>Pessoas que ja acessaram o site</div>
             </div>
         </div>
 
-        <!-- AÇÕES -->
+        <!-- ACOES -->
         <div class="card">
-            <h2 class="card-title"> Ações</h2>
-           <div class="quick-actions">
+            <h2 class="card-title">Acoes</h2>
+            <div class="quick-actions">
 
-    <?php if ($is_master || tela_liberada('novo_produto')): ?>
-    <a href="cadastro_produto.php" class="action-btn">Novo Produto</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('novo_produto')): ?>
+                <a href="cadastro_produto.php" class="action-btn">Novo Produto</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('pedidos')): ?>
-    <a href="#secao-pedidos" class="action-btn"
-       style="<?= $count_pendentes > 0 ? 'border-color:#ffc107;color:#856404;background:#fffbeb' : '' ?>">
-        Pedidos
-        <?php if ($count_pendentes > 0): ?>
-            <span style="background:#e74c3c;color:white;border-radius:50%;
-                         padding:1px 5px;font-size:0.65rem;font-weight:800;margin-left:3px">
-                <?= $count_pendentes ?>
-            </span>
-        <?php endif; ?>
-    </a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('pedidos')): ?>
+                <a href="#secao-pedidos" class="action-btn"
+                   style="<?= $count_pendentes > 0 ? 'border-color:#ffc107;color:#856404;background:#fffbeb' : '' ?>">
+                    Pedidos
+                    <?php if ($count_pendentes > 0): ?>
+                        <span style="background:#e74c3c;color:white;border-radius:50%;
+                                     padding:1px 5px;font-size:0.65rem;font-weight:800;margin-left:3px">
+                            <?= $count_pendentes ?>
+                        </span>
+                    <?php endif; ?>
+                </a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('categorias')): ?>
-    <a href="categorias.php" class="action-btn">Categorias</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('categorias')): ?>
+                <a href="categorias.php" class="action-btn">Categorias</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('dashboard_vendas')): ?>
-    <a href="dashboard_vendas.php" class="action-btn">Dashboard de Vendas</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('dashboard_vendas')): ?>
+                <a href="dashboard_vendas.php" class="action-btn">Dashboard de Vendas</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('venda_presencial')): ?>
-    <a href="venda_presencial.php" class="action-btn destaque">Venda Presencial</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('venda_presencial')): ?>
+                <a href="venda_presencial.php" class="action-btn destaque">Venda Presencial</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('cancelamentos')): ?>
-    <a href="cancelamentos.php" class="action-btn">Cancelamentos</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('cancelamentos')): ?>
+                <a href="cancelamentos.php" class="action-btn">Cancelamentos</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('logs')): ?>
-    <a href="logs.php" class="action-btn">Logs</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('logs')): ?>
+                <a href="logs.php" class="action-btn">Logs</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('usuarios')): ?>
-    <a href="cadastrar_vendedor.php" class="action-btn">Usuários</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('usuarios')): ?>
+                <a href="cadastrar_vendedor.php" class="action-btn">Usuarios</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('adicionais')): ?>
-    <a href="adicionais_admin.php" class="action-btn">Adicionais</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('adicionais')): ?>
+                <a href="adicionais_admin.php" class="action-btn">Adicionais</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('modo_restaurante')): ?>
-    <a href="modo_restaurante.php" class="action-btn">Modo Restaurante</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('modo_restaurante')): ?>
+                <a href="modo_restaurante.php" class="action-btn">Modo Restaurante</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('historico')): ?>
-    <a href="historico_comandas.php" class="action-btn">Histórico</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('historico')): ?>
+                <a href="historico_comandas.php" class="action-btn">Historico</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('impressoras')): ?>
-    <a href="impressoras.php" class="action-btn">Impressoras</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('impressoras')): ?>
+                <a href="impressoras.php" class="action-btn">Impressoras</a>
+                <?php endif; ?>
 
-    <?php if ($is_master || tela_liberada('empresa')): ?>
-    <a href="empresa.php" class="action-btn">Empresa</a>
-    <?php endif; ?>
+                <?php if ($is_master || tela_liberada('empresa')): ?>
+                <a href="empresa.php" class="action-btn">Empresa</a>
+                <?php endif; ?>
 
-</div>
+            </div>
+        </div>
+
         <!-- TOP 3 -->
         <div class="card">
-            <h2 class="card-title"> Top 3 Mais Vistos</h2>
+            <h2 class="card-title">Top 3 Mais Vistos</h2>
             <?php
             $top_lista = $mais_vistos ? $mais_vistos->fetchAll() : [];
             if (!empty($top_lista)): ?>
             <div class="top-produtos-grid">
                 <?php $rank = 1; foreach ($top_lista as $p): ?>
                 <div class="top-produto-card">
-                    
                     <?php if (!empty($p['imagem'])): ?>
                         <img src="uploads/<?= htmlspecialchars($p['imagem']) ?>" alt="<?= htmlspecialchars($p['nome']) ?>">
                     <?php else: ?>
-                        <div style="width:60px;height:60px;background:#f1f5f9;border-radius:0.5rem;margin:0.5rem auto;display:flex;align-items:center;justify-content:center;font-size:1.5rem">📦</div>
+                        <div style="width:60px;height:60px;background:#f1f5f9;border-radius:0.5rem;margin:0.5rem auto;display:flex;align-items:center;justify-content:center;font-size:1.5rem">-</div>
                     <?php endif; ?>
                     <div class="prod-nome"><?= htmlspecialchars($p['nome']) ?></div>
                     <div class="prod-views"><span><?= number_format($p['total_views']) ?></span> views</div>
@@ -479,109 +506,104 @@ if ($res_cores) {
         </div>
 
         <!-- PEDIDOS -->
-       <?php
-// ── Substitua o bloco do foreach de pedidos no seu admin.php ──
-// Este trecho exibe cada pedido com os adicionais de cada item
+        <?php
+        $labels_status = [
+            'pendente'   => 'Pendente',
+            'confirmado' => 'Confirmado',
+            'cancelado'  => 'Cancelado',
+            'expirado'   => 'Expirado',
+        ];
 
-$labels_status = [
-    'pendente'   => ' Pendente',
-    'confirmado' => ' Confirmado',
-    'cancelado'  => ' Cancelado',
-    'expirado'   => ' Expirado',
-];
-
-foreach ($pedidos as $p):
-    $s = $conn->prepare("SELECT * FROM itens_pedido WHERE id_pedido = ?");
-    $s->execute([$p['id_pedido']]);
-    $itens_p = $s->fetchAll();
-?>
-<div class="pedido-card <?= $p['status'] ?>" id="pcard-<?= $p['id_pedido'] ?>">
-
-    <div class="pedido-topo">
-        <div>
-            <div class="pedido-num"> Pedido #<?= $p['id_pedido'] ?></div>
-            <div class="pedido-data">
-                 <?= date('d/m/Y H:i', strtotime($p['data_pedido'])) ?>
-                <?php if ($p['status'] === 'pendente'):
-                    $diff   = time() - strtotime($p['data_pedido']);
-                    $restam = 24 - floor($diff / 3600);
-                    $mins   = floor(($diff % 3600) / 60);
-                ?> • ⏱ <?= $restam ?>h<?= $mins ?>min<?php endif; ?>
-            </div>
-        </div>
-        <span class="p-status <?= $p['status'] ?>"><?= $labels_status[$p['status']] ?? $p['status'] ?></span>
-    </div>
-
-    <div class="pedido-infos">
-        <div><span class="pi-label"> Cliente</span><span class="pi-val"><?= htmlspecialchars($p['nome_cliente']) ?></span></div>
-        <div><span class="pi-label"> Telefone</span><span class="pi-val"><?= htmlspecialchars($p['telefone_cliente']) ?></span></div>
-        <div><span class="pi-label"> Pagamento</span><span class="pi-val"><?= htmlspecialchars($p['forma_pagamento']) ?></span></div>
-    </div>
-
-    <?php if ($p['observacoes']): ?>
-    <div class="pedido-obs">
-        <span class="pi-label"> Obs:</span> <?= htmlspecialchars($p['observacoes']) ?>
-    </div>
-    <?php endif; ?>
-
-    <!-- PRODUTOS + ADICIONAIS -->
-    <div class="pedido-itens">
-        <span class="pi-title"> Produtos</span>
-
-        <?php foreach ($itens_p as $item):
-            // Decodifica adicionais salvos como JSON
-            $adicionais_item = [];
-            if (!empty($item['adicionais_json'])) {
-                $adicionais_item = json_decode($item['adicionais_json'], true) ?: [];
-            }
+        foreach ($pedidos as $p):
+            $s = $conn->prepare("SELECT * FROM itens_pedido WHERE id_pedido = ?");
+            $s->execute([$p['id_pedido']]);
+            $itens_p = $s->fetchAll();
         ?>
-        <div class="pedido-item-linha">
-            <div class="pil-nome">
-                <?= htmlspecialchars($item['nome_produto']) ?>
-                <span class="pil-qtd">(<?= $item['quantidade'] ?>x)</span>
-                <span class="pil-preco">R$ <?= number_format($item['subtotal'], 2, ',', '.') ?></span>
+        <div class="pedido-card <?= $p['status'] ?>" id="pcard-<?= $p['id_pedido'] ?>">
+
+            <div class="pedido-topo">
+                <div>
+                    <div class="pedido-num">Pedido #<?= $p['id_pedido'] ?></div>
+                    <div class="pedido-data">
+                        <?= date('d/m/Y H:i', strtotime($p['data_pedido'])) ?>
+                        <?php if ($p['status'] === 'pendente'):
+                            $diff   = time() - strtotime($p['data_pedido']);
+                            $restam = 24 - floor($diff / 3600);
+                            $mins   = floor(($diff % 3600) / 60);
+                        ?> - <?= $restam ?>h<?= $mins ?>min<?php endif; ?>
+                    </div>
+                </div>
+                <span class="p-status <?= $p['status'] ?>"><?= $labels_status[$p['status']] ?? $p['status'] ?></span>
             </div>
 
-            <?php if (!empty($adicionais_item)): ?>
-            <div class="pil-adicionais">
-                <?php foreach ($adicionais_item as $ad): ?>
-                <span class="pil-ad-tag">
-                    + <?= htmlspecialchars($ad['nome']) ?>
-                    <?php if (floatval($ad['preco']) > 0): ?>
-                    <span class="pil-ad-preco">R$ <?= number_format($ad['preco'], 2, ',', '.') ?></span>
-                    <?php endif; ?>
-                </span>
-                <?php endforeach; ?>
+            <div class="pedido-infos">
+                <div><span class="pi-label">Cliente</span><span class="pi-val"><?= htmlspecialchars($p['nome_cliente']) ?></span></div>
+                <div><span class="pi-label">Telefone</span><span class="pi-val"><?= htmlspecialchars($p['telefone_cliente']) ?></span></div>
+                <div><span class="pi-label">Pagamento</span><span class="pi-val"><?= htmlspecialchars($p['forma_pagamento']) ?></span></div>
+            </div>
+
+            <?php if ($p['observacoes']): ?>
+            <div class="pedido-obs">
+                <span class="pi-label">Obs:</span> <?= htmlspecialchars($p['observacoes']) ?>
             </div>
             <?php endif; ?>
+
+            <!-- PRODUTOS + ADICIONAIS -->
+            <div class="pedido-itens">
+                <span class="pi-title">Produtos</span>
+
+                <?php foreach ($itens_p as $item):
+                    $adicionais_item = [];
+                    if (!empty($item['adicionais_json'])) {
+                        $adicionais_item = json_decode($item['adicionais_json'], true) ?: [];
+                    }
+                ?>
+                <div class="pedido-item-linha">
+                    <div class="pil-nome">
+                        <?= htmlspecialchars($item['nome_produto']) ?>
+                        <span class="pil-qtd">(<?= $item['quantidade'] ?>x)</span>
+                        <span class="pil-preco">R$ <?= number_format($item['subtotal'], 2, ',', '.') ?></span>
+                    </div>
+
+                    <?php if (!empty($adicionais_item)): ?>
+                    <div class="pil-adicionais">
+                        <?php foreach ($adicionais_item as $ad): ?>
+                        <span class="pil-ad-tag">
+                            + <?= htmlspecialchars($ad['nome']) ?>
+                            <?php if (floatval($ad['preco']) > 0): ?>
+                            <span class="pil-ad-preco">R$ <?= number_format($ad['preco'], 2, ',', '.') ?></span>
+                            <?php endif; ?>
+                        </span>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="pedido-totais">
+                <div>
+                    <span>Total: </span>
+                    <strong class="p-total-final">R$ <?= number_format($p['valor_total'], 2, ',', '.') ?></strong>
+                </div>
+            </div>
+
+            <?php if ($p['status'] === 'pendente'): ?>
+            <div class="pedido-acoes">
+                <button class="btn-p-confirmar" onclick="acaoPedido(<?= $p['id_pedido'] ?>, 'confirmar', this)">Confirmar Venda</button>
+                <button class="btn-p-cancelar"  onclick="acaoPedido(<?= $p['id_pedido'] ?>, 'cancelar',  this)">Nao Realizada</button>
+            </div>
+            <?php endif; ?>
+
         </div>
         <?php endforeach; ?>
-    </div>
-
-    <div class="pedido-totais">
-        <div>
-            <span>Total: </span>
-            <strong class="p-total-final">R$ <?= number_format($p['valor_total'], 2, ',', '.') ?></strong>
-        </div>
-    </div>
-
-    <?php if ($p['status'] === 'pendente'): ?>
-    <div class="pedido-acoes">
-        <button class="btn-p-confirmar" onclick="acaoPedido(<?= $p['id_pedido'] ?>, 'confirmar', this)">✅ Confirmar Venda</button>
-        <button class="btn-p-cancelar"  onclick="acaoPedido(<?= $p['id_pedido'] ?>, 'cancelar',  this)">❌ Não Realizada</button>
-    </div>
-    <?php endif; ?>
-
-</div>
-<?php endforeach; ?>
-
 
         <!-- ESTOQUE COMPLETO -->
         <div class="card">
-            <h2 class="card-title"> Estoque de Produtos</h2>
+            <h2 class="card-title">Estoque de Produtos</h2>
             <table class="estoque-table">
                 <thead><tr>
-                    <th>#</th><th>Produto</th><th>Preço</th><th>Estoque</th><th>Status</th><th>Ação</th>
+                    <th>#</th><th>Produto</th><th>Preco</th><th>Estoque</th><th>Status</th><th>Acao</th>
                 </tr></thead>
                 <tbody>
                 <?php
@@ -594,8 +616,8 @@ foreach ($pedidos as $p):
                     <td><?= htmlspecialchars($prod['nome']) ?></td>
                     <td>R$ <?= number_format($prod['preco'],2,',','.') ?></td>
                     <td><?= $critico ? '<strong>'.$prod['estoque'].'</strong>' : $prod['estoque'] ?></td>
-                    <td><?= $critico ? '<span class="badge-critico"> Crítico</span>' : '<span class="badge-ok">✓</span>' ?></td>
-                    <td><a href="editar_produto.php?id=<?= $prod['id_produto'] ?>" class="btn-editar-produto"> Editar</a></td>
+                    <td><?= $critico ? '<span class="badge-critico">Critico</span>' : '<span class="badge-ok">OK</span>' ?></td>
+                    <td><a href="editar_produto.php?id=<?= $prod['id_produto'] ?>" class="btn-editar-produto">Editar</a></td>
                 </tr>
                 <?php endforeach; else: ?>
                 <tr><td colspan="6" style="text-align:center;color:var(--gray);padding:1.5rem">Nenhum produto.</td></tr>
@@ -607,7 +629,7 @@ foreach ($pedidos as $p):
         <!-- ESTOQUE BAIXO -->
         <div class="admin-grid">
             <div class="card">
-                <h2 class="card-title"> Estoque Baixo</h2>
+                <h2 class="card-title">Estoque Baixo</h2>
                 <?php
                 $lista_baixo = $produtos_baixo ? $produtos_baixo->fetchAll() : [];
                 if (!empty($lista_baixo)):
@@ -617,24 +639,24 @@ foreach ($pedidos as $p):
                     <span style="background:#fee2e2;color:#991b1b;padding:0.15rem 0.5rem;border-radius:2rem;font-size:0.72rem;font-weight:700"><?= $pb['estoque'] ?> un.</span>
                 </div>
                 <?php endforeach; else: ?>
-                    <p style="color:var(--gray);font-size:0.85rem"> Estoque OK em todos.</p>
+                    <p style="color:var(--gray);font-size:0.85rem">Estoque OK em todos.</p>
                 <?php endif; ?>
             </div>
         </div>
 
         <!-- TEMA -->
         <div class="card">
-            <h2 class="card-title"> Tema do Sistema</h2>
-            <p style="color:var(--gray);font-size:0.85rem;margin-bottom:1rem">Personalize as cores. Aplicado em todas as páginas imediatamente.</p>
+            <h2 class="card-title">Tema do Sistema</h2>
+            <p style="color:var(--gray);font-size:0.85rem;margin-bottom:1rem">Personalize as cores. Aplicado em todas as paginas imediatamente.</p>
             <p style="font-weight:600;font-size:0.85rem;margin-bottom:0.5rem;color:var(--dark)">Temas prontos:</p>
             <div class="tema-presets">
-                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#2563eb,#1e40af)" onclick="aplicarPreset('#2563eb','#1e40af','#10b981','#ef4444','#1e40af','#7c3aed')"> Azul</button>
-                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#16a34a,#14532d)" onclick="aplicarPreset('#16a34a','#14532d','#2563eb','#ef4444','#14532d','#166534')"> Verde</button>
-                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#9333ea,#6b21a8)" onclick="aplicarPreset('#9333ea','#6b21a8','#ec4899','#ef4444','#6b21a8','#4c1d95')"> Roxo</button>
-                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#dc2626,#991b1b)" onclick="aplicarPreset('#dc2626','#991b1b','#f59e0b','#ef4444','#991b1b','#7f1d1d')"> Vermelho</button>
-                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#ea580c,#9a3412)" onclick="aplicarPreset('#ea580c','#9a3412','#facc15','#ef4444','#9a3412','#431407')"> Laranja</button>
-                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#0891b2,#164e63)" onclick="aplicarPreset('#0891b2','#164e63','#10b981','#ef4444','#164e63','#0c4a6e')"> Ciano</button>
-                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#1f2937,#111827)" onclick="aplicarPreset('#1f2937','#111827','#10b981','#ef4444','#111827','#374151')"> Escuro</button>
+                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#2563eb,#1e40af)" onclick="aplicarPreset('#2563eb','#1e40af','#10b981','#ef4444','#1e40af','#7c3aed')">Azul</button>
+                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#16a34a,#14532d)" onclick="aplicarPreset('#16a34a','#14532d','#2563eb','#ef4444','#14532d','#166534')">Verde</button>
+                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#9333ea,#6b21a8)" onclick="aplicarPreset('#9333ea','#6b21a8','#ec4899','#ef4444','#6b21a8','#4c1d95')">Roxo</button>
+                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#dc2626,#991b1b)" onclick="aplicarPreset('#dc2626','#991b1b','#f59e0b','#ef4444','#991b1b','#7f1d1d')">Vermelho</button>
+                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#ea580c,#9a3412)" onclick="aplicarPreset('#ea580c','#9a3412','#facc15','#ef4444','#9a3412','#431407')">Laranja</button>
+                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#0891b2,#164e63)" onclick="aplicarPreset('#0891b2','#164e63','#10b981','#ef4444','#164e63','#0c4a6e')">Ciano</button>
+                <button class="tema-preset-btn" style="background:linear-gradient(135deg,#1f2937,#111827)" onclick="aplicarPreset('#1f2937','#111827','#10b981','#ef4444','#111827','#374151')">Escuro</button>
             </div>
             <p style="font-weight:600;font-size:0.85rem;margin-bottom:0.7rem;color:var(--dark)">Personalizar manualmente:</p>
             <div class="tema-grid">
@@ -642,10 +664,10 @@ foreach ($pedidos as $p):
                 $campos_tema = [
                     'inp_primary'     =>['hex_primary',     'Cor Principal',       'cor_primary'],
                     'inp_primary_dark'=>['hex_primary_dark','Cor Principal Escura','cor_primary_dark'],
-                    'inp_secondary'   =>['hex_secondary',   'Cor Secundária',      'cor_secondary'],
+                    'inp_secondary'   =>['hex_secondary',   'Cor Secundaria',      'cor_secondary'],
                     'inp_danger'      =>['hex_danger',      'Cor de Alerta',       'cor_danger'],
-                    'inp_grad1'       =>['hex_grad1',       'Header — Cor 1',      'cor_header_grad1'],
-                    'inp_grad2'       =>['hex_grad2',       'Header — Cor 2',      'cor_header_grad2'],
+                    'inp_grad1'       =>['hex_grad1',       'Header - Cor 1',      'cor_header_grad1'],
+                    'inp_grad2'       =>['hex_grad2',       'Header - Cor 2',      'cor_header_grad2'],
                 ];
                 foreach ($campos_tema as $id => [$hexId, $label, $chave]):
                     $val = htmlspecialchars($cores_atuais[$chave]);
@@ -666,7 +688,7 @@ foreach ($pedidos as $p):
                     <span class="hex-value" id="hex_fundo"><?= htmlspecialchars($cores_atuais['cor_fundo'] ?? '#f1f5f9') ?></span>
                 </div>
             </div>
-            <button class="btn-salvar-tema" onclick="salvarTema()"> Salvar Tema</button>
+            <button class="btn-salvar-tema" onclick="salvarTema()">Salvar Tema</button>
             <div id="tema-feedback"></div>
         </div>
 
@@ -686,7 +708,7 @@ foreach ($pedidos as $p):
 
     // Pedidos
     function acaoPedido(id,acao,btn) {
-        const msg=acao==='confirmar'?' Confirmar venda e dar baixa no estoque?':' Marcar como não realizada? Estoque NÃO será alterado.';
+        const msg=acao==='confirmar'?'Confirmar venda e dar baixa no estoque?':'Marcar como nao realizada? Estoque NAO sera alterado.';
         if(!confirm(msg)) return;
         const card=document.getElementById('pcard-'+id);
         card.querySelectorAll('button').forEach(b=>b.disabled=true);
@@ -694,7 +716,7 @@ foreach ($pedidos as $p):
         .then(r=>r.json()).then(res=>{
             if(res.success){mostrarToast(res.msg,'sucesso');setTimeout(()=>location.reload(),1500);}
             else{mostrarToast('Erro: '+res.msg,'erro');card.querySelectorAll('button').forEach(b=>b.disabled=false);}
-        }).catch(()=>{mostrarToast('Erro de conexão!','erro');card.querySelectorAll('button').forEach(b=>b.disabled=false);});
+        }).catch(()=>{mostrarToast('Erro de conexao!','erro');card.querySelectorAll('button').forEach(b=>b.disabled=false);});
     }
     function mostrarToast(msg,tipo) {
         const t=document.getElementById('p-toast');
@@ -712,20 +734,20 @@ foreach ($pedidos as $p):
     function salvarTema(){
         const btn=document.querySelector('.btn-salvar-tema');
         const feedback=document.getElementById('tema-feedback');
-        btn.disabled=true;btn.textContent=' Salvando...';
+        btn.disabled=true;btn.textContent='Salvando...';
         const dados=new FormData();
         ['cor_primary:inp_primary','cor_primary_dark:inp_primary_dark','cor_secondary:inp_secondary','cor_danger:inp_danger','cor_header_grad1:inp_grad1','cor_header_grad2:inp_grad2','cor_fundo:inp_fundo'].forEach(p=>{
             const[k,id]=p.split(':');dados.append(k,document.getElementById(id).value);
         });
         fetch('salvar_tema.php',{method:'POST',body:dados}).then(r=>r.json()).then(data=>{
             feedback.style.display='block';
-            if(data.success){feedback.style.background='#d1fae5';feedback.style.color='#065f46';feedback.textContent='✓ '+data.msg+' Recarregando...';setTimeout(()=>location.reload(),1200);}
-            else{feedback.style.background='#fee2e2';feedback.style.color='#991b1b';feedback.textContent='✗ '+data.msg;btn.disabled=false;btn.textContent='💾 Salvar Tema';}
-        }).catch(()=>{feedback.style.display='block';feedback.style.background='#fee2e2';feedback.style.color='#991b1b';feedback.textContent='✗ Erro de conexão.';btn.disabled=false;btn.textContent='💾 Salvar Tema';});
+            if(data.success){feedback.style.background='#d1fae5';feedback.style.color='#065f46';feedback.textContent='Salvo! '+data.msg+' Recarregando...';setTimeout(()=>location.reload(),1200);}
+            else{feedback.style.background='#fee2e2';feedback.style.color='#991b1b';feedback.textContent='Erro: '+data.msg;btn.disabled=false;btn.textContent='Salvar Tema';}
+        }).catch(()=>{feedback.style.display='block';feedback.style.background='#fee2e2';feedback.style.color='#991b1b';feedback.textContent='Erro de conexao.';btn.disabled=false;btn.textContent='Salvar Tema';});
     }
     </script>
 
-    <!-- NOTIFICAÇÕES DO NAVEGADOR -->
+    <!-- NOTIFICACOES DO NAVEGADOR -->
     <script>
     (function(){
         let ultimaVerificacao=new Date().toISOString().slice(0,19).replace('T',' ');
@@ -734,7 +756,7 @@ foreach ($pedidos as $p):
         function dispararNotificacao(pedido){
             if(Notification.permission!=='granted')return;
             const total=parseFloat(pedido.valor_total).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-            const notif=new Notification('🛒 Novo Pedido - TechStore',{body:`Cliente: ${pedido.nome_cliente}\nTotal: ${total}`,icon:'favicon.png',tag:'pedido-'+pedido.id_pedido,requireInteraction:true});
+            const notif=new Notification('Novo Pedido - TechStore',{body:`Cliente: ${pedido.nome_cliente}\nTotal: ${total}`,icon:'favicon.png',tag:'pedido-'+pedido.id_pedido,requireInteraction:true});
             notif.onclick=function(){window.focus();const s=document.getElementById('secao-pedidos');if(s)s.scrollIntoView({behavior:'smooth'});notif.close();};
         }
         function verificarNovos(){
