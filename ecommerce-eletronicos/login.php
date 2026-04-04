@@ -18,6 +18,12 @@ if (!empty($_POST['tenant'])) {
 
 // Tenant já foi validado pelo database.php
 $id_tenant = $_SESSION['id_tenant'] ?? null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    error_log("DEBUG LOGIN - id_tenant: " . $id_tenant);
+    error_log("DEBUG LOGIN - tenant_url: " . ($_SESSION['tenant_subdominio_url'] ?? 'nenhum'));
+    error_log("DEBUG LOGIN - POST tenant: " . ($_POST['tenant'] ?? 'nenhum'));
+    error_log("DEBUG LOGIN - tenant_carregado: " . ($_SESSION['tenant_carregado'] ?? 'nenhum'));
+}
 $tenant_param = $_GET['tenant'] ?? $_SESSION['tenant_subdominio_url'] ?? '';
 
 if (isset($_SESSION['id_cliente'])) {
