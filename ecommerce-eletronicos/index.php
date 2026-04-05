@@ -4,11 +4,13 @@ require_once 'config/tema.php';
 require_once 'empresa_helper.php';
 require_once 'config/verifica_plano.php';
 
-// ✅ Pega o id_tenant ANTES de verificar
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 $emp = getDadosEmpresa($conn);
 
-verificar_plano_acesso(['basico'], $conn);
+// ✅ Só bloqueia se for admin logado com tenant (não bloqueia visitantes comuns)
+if (isset($_SESSION['id_admin']) && !empty($id_tenant)) {
+    verificar_plano_acesso(['basico'], $conn);
+}
 
 if (!isset($_SESSION['carrinho'])) {
     $_SESSION['carrinho'] = [];
