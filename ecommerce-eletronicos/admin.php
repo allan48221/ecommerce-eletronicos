@@ -801,6 +801,16 @@ if ($res_cores) {
             }catch(e){}
         }
     })();
+
+        (function(){
+    const aviso = document.querySelector('[data-aviso-plano]');
+    if (!aviso) return;
+    setTimeout(() => {
+        aviso.style.transition = 'opacity 0.5s';
+        aviso.style.opacity = '0';
+        setTimeout(() => aviso.remove(), 500);
+    }, 4000); // some após 4 segundos
+})();
     </script>
 </body>
 </html>
