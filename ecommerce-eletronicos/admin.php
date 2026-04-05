@@ -21,6 +21,16 @@ $stats['total_pedidos']  = $conn->query("SELECT COUNT(*) FROM compras")->fetchCo
 $stats['total_vendas']   = $conn->query("SELECT COALESCE(SUM(valor_total),0) FROM compras")->fetchColumn();
 $stats['estoque_baixo']  = $conn->query("SELECT COUNT(*) FROM produtos WHERE estoque < 10 AND ativo = TRUE")->fetchColumn();
 
+// Cola isso junto com as outras queries no topo do admin.php
+$subdominio_logout = '';
+if (!empty($id_tenant)) {
+    $stmt_sub = $conn->prepare("SELECT subdominio FROM empresas_tenants WHERE id_tenant = ?");
+    $stmt_sub->execute([$id_tenant]);
+    $subdominio_logout = $stmt_sub->fetchColumn() ?: '';
+}
+$url_saida = $subdominio_logout
+    ? 'logout.php?redirect=index.php&tenant=' . urlencode($subdominio_logout)
+    : 'logout.php';
 // Top 3 mais vistos — filtrado por tenant
 if ($is_master) {
     $mais_vistos = $conn->query("
@@ -379,7 +389,7 @@ if ($res_cores) {
             <a href="index.php" class="logo"></a>
             <nav><ul>
                 <li><a href="index.php">Ver Loja</a></li>
-                <li><a href="logout.php" class="btn-carrinho" style="background:var(--danger)">Sair</a></li>
+                <li><a href="<?= $url_saida ?>" class="btn-carrinho" style="background:var(--danger)">Sair</a></li>
             </ul></nav>
         </div>
     </header>
