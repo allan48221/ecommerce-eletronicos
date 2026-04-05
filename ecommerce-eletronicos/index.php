@@ -4,8 +4,6 @@ require_once 'config/tema.php';
 require_once 'empresa_helper.php';
 require_once 'config/verifica_plano.php';
 
-$id_tenant = $_SESSION['id_tenant'] ?? null;
-$emp = getDadosEmpresa($conn);
 if (!empty($id_tenant)) {
     verificar_plano_acesso(['basico'], $conn);
 }
