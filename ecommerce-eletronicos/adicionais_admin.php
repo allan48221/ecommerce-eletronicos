@@ -29,10 +29,7 @@ $conn->exec("
     )
 ");
 
-// Adiciona coluna id_tenant se não existir
-try {
-    $conn->exec("ALTER TABLE adicionais ADD COLUMN IF NOT EXISTS id_tenant INTEGER");
-} catch (\Throwable $e) {}
+try { $conn->exec("ALTER TABLE adicionais ADD COLUMN IF NOT EXISTS id_tenant INTEGER"); } catch (\Throwable $e) {}
 
 $msg  = '';
 $tipo = '';
@@ -53,7 +50,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
     $nome  = trim($_POST['nome'] ?? '');
     $preco = floatval(str_replace(',', '.', $_POST['preco'] ?? '0'));
     if ($id_a > 0 && $nome !== '') {
-        $conn->prepare("UPDATE adicionais SET nome=?, preco=? WHERE id_adicional=? AND (id_tenant=? OR id_tenant IS NULL)")->execute([$nome, $preco, $id_a, $id_tenant]);
+        if ($is_master) {
+            $conn->prepare("UPDATE adicionais SET nome=?, preco=? WHERE id_adicional=?")->execute([$nome, $preco, $id_a]);
+        } else {
+            $conn->prepare("UPDATE adicionais SET nome=?, preco=? WHERE id_adicional=? AND id_tenant=?")->execute([$nome, $preco, $id_a, $id_tenant]);
+        }
         $msg = 'Adicional atualizado.'; $tipo = 'ok';
     }
 }
@@ -61,7 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'toggle') {
     $id_a = intval($_POST['id_adicional'] ?? 0);
     if ($id_a > 0) {
-        $conn->prepare("UPDATE adicionais SET ativo = NOT ativo WHERE id_adicional=? AND (id_tenant=? OR id_tenant IS NULL)")->execute([$id_a, $id_tenant]);
+        if ($is_master) {
+            $conn->prepare("UPDATE adicionais SET ativo = NOT ativo WHERE id_adicional=?")->execute([$id_a]);
+        } else {
+            $conn->prepare("UPDATE adicionais SET ativo = NOT ativo WHERE id_adicional=? AND id_tenant=?")->execute([$id_a, $id_tenant]);
+        }
         $msg = 'Status alterado.'; $tipo = 'ok';
     }
 }
@@ -69,8 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'toggle'
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir') {
     $id_a = intval($_POST['id_adicional'] ?? 0);
     if ($id_a > 0) {
-        $conn->prepare("DELETE FROM produto_adicionais WHERE id_adicional=?")->execute([$id_a]);
-        $conn->prepare("DELETE FROM adicionais WHERE id_adicional=? AND (id_tenant=? OR id_tenant IS NULL)")->execute([$id_a, $id_tenant]);
+        if ($is_master) {
+            $conn->prepare("DELETE FROM produto_adicionais WHERE id_adicional=?")->execute([$id_a]);
+            $conn->prepare("DELETE FROM adicionais WHERE id_adicional=?")->execute([$id_a]);
+        } else {
+            $conn->prepare("DELETE FROM produto_adicionais WHERE id_adicional=? AND id_adicional IN (SELECT id_adicional FROM adicionais WHERE id_tenant=?)")->execute([$id_a, $id_tenant]);
+            $conn->prepare("DELETE FROM adicionais WHERE id_adicional=? AND id_tenant=?")->execute([$id_a, $id_tenant]);
+        }
         $msg = 'Adicional excluido.'; $tipo = 'ok';
     }
 }
@@ -96,33 +106,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'vincula
     }
 }
 
-// Adicionais filtrados por tenant
-$stmt_ad = $conn->prepare("SELECT * FROM adicionais WHERE (id_tenant = ? OR id_tenant IS NULL) ORDER BY criado_em DESC");
-$stmt_ad->execute([$id_tenant]);
-$adicionais = $stmt_ad->fetchAll();
+// ── LEITURA: adicionais APENAS do tenant — sem OR IS NULL ──
+if ($is_master) {
+    $stmt_ad = $conn->query("SELECT * FROM adicionais ORDER BY criado_em DESC");
+} else {
+    $stmt_ad = $conn->prepare("SELECT * FROM adicionais WHERE id_tenant = ? ORDER BY criado_em DESC");
+    $stmt_ad->execute([$id_tenant]);
+}
+$adicionais = $stmt_ad->fetchAll(PDO::FETCH_ASSOC);
 
-// Produtos filtrados por tenant
-$stmt_pr = $conn->prepare("SELECT id_produto, nome FROM produtos WHERE ativo=TRUE AND (id_tenant = ? OR id_tenant IS NULL) ORDER BY nome");
-$stmt_pr->execute([$id_tenant]);
-$produtos = $stmt_pr->fetchAll();
+// ── LEITURA: produtos APENAS do tenant — sem OR IS NULL ──
+if ($is_master) {
+    $stmt_pr = $conn->query("SELECT id_produto, nome FROM produtos WHERE ativo=TRUE ORDER BY nome");
+} else {
+    $stmt_pr = $conn->prepare("SELECT id_produto, nome FROM produtos WHERE ativo=TRUE AND id_tenant = ? ORDER BY nome");
+    $stmt_pr->execute([$id_tenant]);
+}
+$produtos = $stmt_pr->fetchAll(PDO::FETCH_ASSOC);
 
-// Vínculos filtrados: só busca produto_adicionais cujos adicionais pertencem ao tenant
+// ── LEITURA: vínculos filtrando pelos adicionais E produtos deste tenant ──
 $vinculos = [];
 try {
     if ($is_master) {
-        $rows = $conn->query("
-            SELECT pa.id_produto, pa.id_adicional
-            FROM produto_adicionais pa
-            JOIN adicionais a ON a.id_adicional = pa.id_adicional
-        ")->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $conn->query("SELECT pa.id_produto, pa.id_adicional FROM produto_adicionais pa")->fetchAll(PDO::FETCH_ASSOC);
     } else {
         $stmt_v = $conn->prepare("
             SELECT pa.id_produto, pa.id_adicional
             FROM produto_adicionais pa
             JOIN adicionais a ON a.id_adicional = pa.id_adicional
-            WHERE a.id_tenant = ? OR a.id_tenant IS NULL
+            JOIN produtos   p ON p.id_produto   = pa.id_produto
+            WHERE a.id_tenant = ?
+              AND p.id_tenant = ?
         ");
-        $stmt_v->execute([$id_tenant]);
+        $stmt_v->execute([$id_tenant, $id_tenant]);
         $rows = $stmt_v->fetchAll(PDO::FETCH_ASSOC);
     }
     foreach ($rows as $r) {
