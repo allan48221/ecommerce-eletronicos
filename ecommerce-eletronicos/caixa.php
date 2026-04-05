@@ -3,7 +3,7 @@ require_once 'config/database.php';
 require_once 'config/tema.php';
 require_once 'empresa_helper.php';
 $emp = getDadosEmpresa($conn);
- 
+
 // -- Aceita admin real OU caixa logado via staff --
 $tipo_staff    = $_SESSION['tipo_staff'] ?? null;
 $id_admin_real = null;
@@ -14,22 +14,22 @@ if ($id_admin_real === null && $tipo_staff !== 'caixa') {
     header('Location: login.php');
     exit;
 }
- 
+
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
+
 // -- Nome do usuario logado --
 $nome_caixa = 'Caixa';
- 
 if (!empty($_SESSION['tipo_staff'])) {
-    // É um staff (caixa, atendente, vendedor) — usa sempre nome_staff
     $nome_caixa = $_SESSION['nome_staff'] ?? 'Caixa';
 } elseif (!empty($_SESSION['id_admin']) && is_numeric($_SESSION['id_admin'])) {
-    // É um admin real (id_admin numérico puro)
     $nome_caixa = $_SESSION['nome_admin'] ?? 'Administrador';
 }
- 
+
 $msg         = '';
 $tipo_msg    = '';
 $comprovante = null;
- 
+
 // ===============================================================
 // HELPERS CAIXA
 // ===============================================================
@@ -37,11 +37,11 @@ function sessaoAtiva(PDO $conn): ?array {
     $s = $conn->query("SELECT * FROM caixa_sessoes WHERE status = 'aberto' ORDER BY aberto_em DESC LIMIT 1");
     return $s->fetch(PDO::FETCH_ASSOC) ?: null;
 }
- 
+
 // ===============================================================
 // AJAX ENDPOINTS
 // ===============================================================
- 
+
 // -- AJAX: lista comandas abertas --
 if (isset($_GET['ajax_comandas'])) {
     header('Content-Type: application/json');
@@ -61,7 +61,7 @@ if (isset($_GET['ajax_comandas'])) {
     } catch (\Throwable $e) { echo json_encode(['agora_ts' => time(), 'comandas' => []]); }
     exit;
 }
- 
+
 // -- AJAX: detalhes completos de comanda (historico) --
 if (isset($_GET['detalhe_historico'])) {
     header('Content-Type: application/json');
@@ -80,7 +80,7 @@ if (isset($_GET['detalhe_historico'])) {
     } catch (\Throwable $e) { echo json_encode(null); }
     exit;
 }
- 
+
 // -- AJAX: itens da comanda --
 if (isset($_GET['itens_comanda'])) {
     header('Content-Type: application/json');
@@ -92,49 +92,114 @@ if (isset($_GET['itens_comanda'])) {
     echo json_encode($itens);
     exit;
 }
- 
+
 // -- AJAX: produtos por categoria --
 if (isset($_GET['categoria'])) {
     header('Content-Type: application/json');
     $id_cat = intval($_GET['categoria']);
     if ($id_cat === 0) {
-        $stmt = $conn->query("SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem, c.nome AS categoria_nome FROM produtos p LEFT JOIN categorias c ON c.id_categoria = p.id_categoria WHERE p.ativo = TRUE AND p.estoque > 0 ORDER BY p.nome ASC LIMIT 60");
+        if ($is_master) {
+            $stmt = $conn->query("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0
+                ORDER BY p.nome ASC LIMIT 60
+            ");
+        } else {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_tenant = ?
+                ORDER BY p.nome ASC LIMIT 60
+            ");
+            $stmt->execute([$id_tenant]);
+        }
     } else {
-        $stmt = $conn->prepare("SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem, c.nome AS categoria_nome FROM produtos p LEFT JOIN categorias c ON c.id_categoria = p.id_categoria WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_categoria = ? ORDER BY p.nome ASC LIMIT 60");
-        $stmt->execute([$id_cat]);
+        if ($is_master) {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_categoria = ?
+                ORDER BY p.nome ASC LIMIT 60
+            ");
+            $stmt->execute([$id_cat]);
+        } else {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_categoria = ? AND p.id_tenant = ?
+                ORDER BY p.nome ASC LIMIT 60
+            ");
+            $stmt->execute([$id_cat, $id_tenant]);
+        }
     }
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     exit;
 }
- 
+
 // -- AJAX: adicionais do produto --
 if (isset($_GET['adicionais'])) {
     header('Content-Type: application/json');
     $id = intval($_GET['adicionais']);
     try {
-        $stmt = $conn->prepare("SELECT a.id_adicional, a.nome, a.preco FROM produto_adicionais pa JOIN adicionais a ON a.id_adicional = pa.id_adicional WHERE pa.id_produto = ? AND a.ativo = TRUE ORDER BY a.nome");
+        $stmt = $conn->prepare("
+            SELECT a.id_adicional, a.nome, a.preco
+            FROM produto_adicionais pa
+            JOIN adicionais a ON a.id_adicional = pa.id_adicional
+            WHERE pa.id_produto = ? AND a.ativo = TRUE
+            ORDER BY a.nome
+        ");
         $stmt->execute([$id]);
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     } catch (\Throwable $e) { echo json_encode([]); }
     exit;
 }
- 
+
 // -- AJAX: listar adicionais avulsos --
 if (isset($_GET['adicionais_avulsos'])) {
     header('Content-Type: application/json');
     $q = trim($_GET['adicionais_avulsos'] ?? '');
     try {
         if ($q !== '') {
-            $stmt = $conn->prepare("SELECT id_adicional, nome, preco FROM adicionais WHERE ativo = TRUE AND nome ILIKE ? ORDER BY nome ASC LIMIT 40");
-            $stmt->execute(['%' . $q . '%']);
+            if ($is_master) {
+                $stmt = $conn->prepare("
+                    SELECT id_adicional, nome, preco FROM adicionais
+                    WHERE ativo = TRUE AND nome ILIKE ?
+                    ORDER BY nome ASC LIMIT 40
+                ");
+                $stmt->execute(['%' . $q . '%']);
+            } else {
+                $stmt = $conn->prepare("
+                    SELECT id_adicional, nome, preco FROM adicionais
+                    WHERE ativo = TRUE AND nome ILIKE ? AND id_tenant = ?
+                    ORDER BY nome ASC LIMIT 40
+                ");
+                $stmt->execute(['%' . $q . '%', $id_tenant]);
+            }
         } else {
-            $stmt = $conn->query("SELECT id_adicional, nome, preco FROM adicionais WHERE ativo = TRUE ORDER BY nome ASC LIMIT 40");
+            if ($is_master) {
+                $stmt = $conn->query("
+                    SELECT id_adicional, nome, preco FROM adicionais
+                    WHERE ativo = TRUE ORDER BY nome ASC LIMIT 40
+                ");
+            } else {
+                $stmt = $conn->prepare("
+                    SELECT id_adicional, nome, preco FROM adicionais
+                    WHERE ativo = TRUE AND id_tenant = ?
+                    ORDER BY nome ASC LIMIT 40
+                ");
+                $stmt->execute([$id_tenant]);
+            }
         }
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     } catch (\Throwable $e) { echo json_encode([]); }
     exit;
 }
- 
+
 // -- AJAX: dados da sessao ativa para o painel de caixa --
 if (isset($_GET['ajax_sessao'])) {
     header('Content-Type: application/json');
@@ -148,11 +213,11 @@ if (isset($_GET['ajax_sessao'])) {
         }
         if (!$sessao) { echo json_encode(null); exit; }
         $id_sessao = $sessao['id_sessao'];
- 
+
         $sm = $conn->prepare("SELECT * FROM caixa_movimentacoes WHERE id_sessao = ? ORDER BY criado_em");
         $sm->execute([$id_sessao]);
         $sessao['movimentacoes'] = $sm->fetchAll(PDO::FETCH_ASSOC);
- 
+
         $ate = $sessao['fechado_em'] ? "'{$sessao['fechado_em']}'" : "NOW()";
         $sv = $conn->query("
             SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total
@@ -163,17 +228,17 @@ if (isset($_GET['ajax_sessao'])) {
             GROUP BY forma_pagamento
         ");
         $sessao['vendas_por_pagamento'] = $sv->fetchAll(PDO::FETCH_ASSOC);
- 
+
         $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate");
         $totais = $st->fetch(PDO::FETCH_ASSOC);
         $sessao['total_vendido'] = $totais['total'];
         $sessao['qtd_pedidos']   = $totais['qtd'];
- 
+
         echo json_encode($sessao);
     } catch (\Throwable $e) { echo json_encode(['erro' => $e->getMessage()]); }
     exit;
 }
- 
+
 // -- AJAX: historico de sessoes fechadas --
 if (isset($_GET['ajax_historico_sessoes'])) {
     header('Content-Type: application/json');
@@ -183,7 +248,7 @@ if (isset($_GET['ajax_historico_sessoes'])) {
     } catch (\Throwable $e) { echo json_encode([]); }
     exit;
 }
- 
+
 // -- AJAX: verificar senha de cancelamento --
 if (isset($_GET['verificar_senha_cancel'])) {
     header('Content-Type: application/json');
@@ -201,12 +266,12 @@ if (isset($_GET['verificar_senha_cancel'])) {
     } catch (\Throwable $e) { echo json_encode(['ok' => false]); }
     exit;
 }
- 
+
 // -- AJAX: cancelar item individual da comanda --
 if (isset($_GET['cancelar_item'])) {
     header('Content-Type: application/json');
     $id_item = intval($_POST['id_item'] ?? 0);
-    if ($id_item <= 0) { echo json_encode(['ok' => false, 'msg' => 'ID do item inválido.']); exit; }
+    if ($id_item <= 0) { echo json_encode(['ok' => false, 'msg' => 'ID do item invalido.']); exit; }
     try {
         $conn->beginTransaction();
         $stmt = $conn->prepare("SELECT id_comanda, subtotal FROM comanda_itens WHERE id_item = ?");
@@ -216,20 +281,20 @@ if (isset($_GET['cancelar_item'])) {
             $id_comanda = $item['id_comanda'];
             $valor_item = $item['subtotal'];
             $conn->prepare("
-    INSERT INTO comanda_itens_removidos 
-    (id_comanda, numero_comanda, nome_produto, quantidade, subtotal, removido_por)
-    SELECT ci.id_comanda, c.numero_comanda, ci.nome_produto, ci.quantidade, ci.subtotal, ?
-    FROM comanda_itens ci
-    JOIN comandas c ON c.id_comanda = ci.id_comanda
-    WHERE ci.id_item = ?
-")->execute([$nome_caixa, $id_item]);
+                INSERT INTO comanda_itens_removidos
+                (id_comanda, numero_comanda, nome_produto, quantidade, subtotal, removido_por)
+                SELECT ci.id_comanda, c.numero_comanda, ci.nome_produto, ci.quantidade, ci.subtotal, ?
+                FROM comanda_itens ci
+                JOIN comandas c ON c.id_comanda = ci.id_comanda
+                WHERE ci.id_item = ?
+            ")->execute([$nome_caixa, $id_item]);
             $conn->prepare("DELETE FROM comanda_itens WHERE id_item = ?")->execute([$id_item]);
             $conn->prepare("UPDATE comandas SET valor_total = valor_total - ? WHERE id_comanda = ?")->execute([$valor_item, $id_comanda]);
             $conn->commit();
-            registrar_log($conn, 'item_removido', "Item removido da comanda #$id_comanda", "Valor subtraído: R$ $valor_item", $valor_item, $id_item, $nome_caixa);
+            registrar_log($conn, 'item_removido', "Item removido da comanda #$id_comanda", "Valor subtraido: R$ $valor_item", $valor_item, $id_item, $nome_caixa);
             echo json_encode(['ok' => true]);
         } else {
-            throw new Exception("Item não encontrado.");
+            throw new Exception("Item nao encontrado.");
         }
     } catch (\Throwable $e) {
         $conn->rollBack();
@@ -237,14 +302,14 @@ if (isset($_GET['cancelar_item'])) {
     }
     exit;
 }
- 
+
 // ===============================================================
 // POST: GESTAO DE CAIXA
 // ===============================================================
- 
+
 // -- POST: ABRIR CAIXA --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'abrir_caixa') {
-   $valor_inicial = floatval(str_replace(',', '.', str_replace('.', '', $_POST['valor_inicial'] ?? '0')));
+    $valor_inicial = floatval(str_replace(',', '.', str_replace('.', '', $_POST['valor_inicial'] ?? '0')));
     $obs           = trim($_POST['obs_abertura'] ?? '');
     try {
         $sessao_atual = sessaoAtiva($conn);
@@ -258,7 +323,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'abrir_c
         }
     } catch (\Throwable $e) { $msg = 'Erro: ' . $e->getMessage(); $tipo_msg = 'danger'; }
 }
- 
+
 // -- POST: MOVIMENTACAO --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimentacao') {
     $id_sessao = intval($_POST['id_sessao'] ?? 0);
@@ -271,12 +336,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'movimen
         try {
             $conn->prepare("INSERT INTO caixa_movimentacoes (id_sessao, tipo, descricao, valor, operador, criado_em) VALUES (?,?,?,?,?,NOW())")
                  ->execute([$id_sessao, $tipo_mov, $descricao, $valor, $nome_caixa]);
-            registrar_log($conn, 'caixa_mov_'.$tipo_mov, ucfirst($tipo_mov)." no caixa por $nome_caixa", "$descricao — R$ " . number_format($valor, 2, ',', '.'), $valor, null, $nome_caixa);
+            registrar_log($conn, 'caixa_mov_'.$tipo_mov, ucfirst($tipo_mov)." no caixa por $nome_caixa", "$descricao - R$ " . number_format($valor, 2, ',', '.'), $valor, null, $nome_caixa);
             $msg = ucfirst($tipo_mov) . ' registrado: R$ ' . number_format($valor, 2, ',', '.'); $tipo_msg = 'success';
         } catch (\Throwable $e) { $msg = 'Erro: ' . $e->getMessage(); $tipo_msg = 'danger'; }
     }
 }
- 
+
 // -- POST: FECHAR CAIXA --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar_caixa') {
     $id_sessao     = intval($_POST['id_sessao'] ?? 0);
@@ -302,7 +367,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar_
         $msg = 'Caixa fechado com sucesso!'; $tipo_msg = 'success';
     } catch (\Throwable $e) { $msg = 'Erro: ' . $e->getMessage(); $tipo_msg = 'danger'; }
 }
- 
+
 // -- POST: REABRIR CAIXA --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'reabrir_caixa') {
     $id_sessao   = intval($_POST['id_sessao_reabrir'] ?? 0);
@@ -316,11 +381,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'reabrir
         $msg = 'Caixa reaberto.'; $tipo_msg = 'success';
     } catch (\Throwable $e) { $msg = 'Erro: ' . $e->getMessage(); $tipo_msg = 'danger'; }
 }
- 
+
 // ===============================================================
 // POST: COMANDAS
 // ===============================================================
- 
+
 // -- POST: FECHAR COMANDA --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar') {
     $id_comanda      = intval($_POST['id_comanda'] ?? 0);
@@ -354,30 +419,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar'
             }
             $conn->prepare("UPDATE comandas SET status = 'fechada', fechado_em = NOW(), id_admin = ? WHERE id_comanda = ?")->execute([$id_admin_real, $id_comanda]);
             $conn->commit();
-            registrar_log($conn, 'comanda_fechada', "Comanda #" . $comanda['numero_comanda'] . " fechada", "Pagamento: $forma_pagamento — Pedido #$id_pedido gerado", $comanda['valor_total'], $id_pedido, $nome_caixa);
-            $comprovante = ['id_pedido'=>$id_pedido,'numero_comanda'=>$comanda['numero_comanda'],'data'=>date('d/m/Y H:i'),'itens'=>$itens_comprovante,'forma_pagamento'=>$forma_pagamento,'observacao'=>$comanda['observacao']??'','lancado_por'=>$comanda['lancado_por']??'','total'=>$comanda['valor_total']];
-            // Adicione os campos da empresa:
-$comprovante = [
-    'id_pedido'       => $id_pedido,
-    'numero_comanda'  => $comanda['numero_comanda'],
-    'data'            => date('d/m/Y H:i'),
-    'itens'           => $itens_comprovante,
-    'forma_pagamento' => $forma_pagamento,
-    'observacao'      => $comanda['observacao'] ?? '',
-    'lancado_por'     => $comanda['lancado_por'] ?? '',
-    'total'           => $comanda['valor_total'],
-    // ─── NOVOS ───
-    'nome_empresa'    => $emp['nome_fantasia'] ?: $emp['nome_empresa'],
-    'cnpj'            => $emp['cnpj_formatado'],
-    'endereco'        => $emp['endereco_completo'],
-    'telefone'        => $emp['telefone'] ?: $emp['celular'],
-];
+            registrar_log($conn, 'comanda_fechada', "Comanda #" . $comanda['numero_comanda'] . " fechada", "Pagamento: $forma_pagamento - Pedido #$id_pedido gerado", $comanda['valor_total'], $id_pedido, $nome_caixa);
+            $comprovante = [
+                'id_pedido'       => $id_pedido,
+                'numero_comanda'  => $comanda['numero_comanda'],
+                'data'            => date('d/m/Y H:i'),
+                'itens'           => $itens_comprovante,
+                'forma_pagamento' => $forma_pagamento,
+                'observacao'      => $comanda['observacao'] ?? '',
+                'lancado_por'     => $comanda['lancado_por'] ?? '',
+                'total'           => $comanda['valor_total'],
+                'nome_empresa'    => $emp['nome_fantasia'] ?: $emp['nome_empresa'],
+                'cnpj'            => $emp['cnpj_formatado'],
+                'endereco'        => $emp['endereco_completo'],
+                'telefone'        => $emp['telefone'] ?: $emp['celular'],
+            ];
             $msg = "Comanda <strong>#" . htmlspecialchars($comanda['numero_comanda']) . "</strong> fechada! Pedido <strong>#$id_pedido</strong> gerado.";
             $tipo_msg = 'success';
         } catch (\Throwable $e) { $conn->rollBack(); $msg = 'Erro: ' . $e->getMessage(); $tipo_msg = 'danger'; }
     }
 }
- 
+
 // -- POST: CANCELAR COMANDA --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'cancelar') {
     $id_comanda = intval($_POST['id_comanda'] ?? 0);
@@ -387,7 +449,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'cancela
         $msg = 'Comanda cancelada.'; $tipo_msg = 'success';
     }
 }
- 
+
 // -- POST: ADICIONAR ITENS --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'adicionar_itens') {
     $id_comanda = intval($_POST['id_comanda'] ?? 0);
@@ -429,7 +491,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'adicion
         } catch (\Throwable $e) { $conn->rollBack(); $msg = 'Erro: ' . $e->getMessage(); $tipo_msg = 'danger'; }
     }
 }
- 
+
 // -- POST: NOVA COMANDA --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'nova_comanda') {
     $numero_comanda = trim($_POST['numero_comanda'] ?? '');
@@ -486,16 +548,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'nova_co
                 $conn->prepare("INSERT INTO comanda_itens (id_comanda, id_produto, nome_produto, preco_unitario, quantidade, subtotal, adicionais, observacao, lancado_por) VALUES (?,?,?,?,?,?,?,?,?)")
                      ->execute([$id_comanda, $item['id_produto'], $p['nome'], $preco_base, $item['quantidade'], $sub + $extras, !empty($item['adicionais']) ? json_encode($item['adicionais']) : null, $item['obs'] ?? null, $nome_caixa]);
             }
-            // ✅ foreach fechado — agora sim o commit
             $conn->commit();
- 
-            // ── Dispara impressão na cozinha ──────────────────────────────
+
             try {
                 require_once 'printer_dispatch.php';
- 
                 $stmt_imp = $conn->prepare("
                     SELECT ci.nome_produto, ci.quantidade, ci.observacao,
-                    ci.adicionais,       
+                    ci.adicionais,
                     p.id_categoria
                     FROM comanda_itens ci
                     LEFT JOIN produtos p ON p.id_produto = ci.id_produto
@@ -504,53 +563,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'nova_co
                 ");
                 $stmt_imp->execute([$id_comanda]);
                 $itens_para_imprimir = $stmt_imp->fetchAll(PDO::FETCH_ASSOC);
- 
                 $mesa_exib = $observacao_cmd ?: '-';
- 
-                $resultados_imp = despacharParaImpressoras(
-                    $conn,
-                    $id_comanda,
-                    $numero_comanda,
-                    $mesa_exib,
-                    $nome_caixa,
-                    $itens_para_imprimir
-                );
- 
+                $resultados_imp = despacharParaImpressoras($conn, $id_comanda, $numero_comanda, $mesa_exib, $nome_caixa, $itens_para_imprimir);
                 foreach ($resultados_imp as $r) {
                     $status = $r['sucesso'] ? 'OK' : 'FALHA';
-                    error_log("Impressão [{$status}] → {$r['impressora']} ({$r['ip']}) — {$r['itens_count']} item(ns)");
+                    error_log("Impressao [{$status}] -> {$r['impressora']} ({$r['ip']}) - {$r['itens_count']} item(ns)");
                 }
- 
             } catch (\Throwable $e) {
                 error_log("Erro ao imprimir comanda #$numero_comanda: " . $e->getMessage());
             }
-            // ─────────────────────────────────────────────────────────────
- 
+
             $msg = "Comanda <strong>#$numero_comanda</strong> " . ($comanda_exist ? "atualizada" : "criada") . "! " . count($itens) . " item(ns).";
             $tipo_msg = 'success';
- 
+
         } catch (\Throwable $e) { $conn->rollBack(); $msg = 'Erro: ' . $e->getMessage(); $tipo_msg = 'danger'; }
     } else { $msg = implode(' ', $erros); $tipo_msg = 'danger'; }
 }
- 
+
 // ===============================================================
 // DADOS PARA RENDERIZACAO
 // ===============================================================
 $sessao_atual = sessaoAtiva($conn);
- 
+
 $dados_sessao = null;
 if ($sessao_atual) {
     $id_s = $sessao_atual['id_sessao'];
     $sm = $conn->prepare("SELECT * FROM caixa_movimentacoes WHERE id_sessao = ? ORDER BY criado_em DESC");
     $sm->execute([$id_s]);
     $movimentacoes = $sm->fetchAll(PDO::FETCH_ASSOC);
- 
+
     $sv = $conn->query("SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}' GROUP BY forma_pagamento");
     $vendas_pagamento = $sv->fetchAll(PDO::FETCH_ASSOC);
- 
+
     $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}'");
     $totais_vendas = $st->fetch(PDO::FETCH_ASSOC);
- 
+
     $total_suprimentos = 0; $total_sangrias = 0; $total_despesas = 0;
     foreach ($movimentacoes as $m) {
         if ($m['tipo'] === 'suprimento') $total_suprimentos += $m['valor'];
@@ -560,12 +607,12 @@ if ($sessao_atual) {
     $total_saidas   = $total_sangrias + $total_despesas;
     $total_vendido  = floatval($totais_vendas['total']);
     $saldo_esperado = floatval($sessao_atual['valor_inicial']) + $total_suprimentos + $total_vendido - $total_saidas;
- 
+
     $dados_sessao = compact('movimentacoes','vendas_pagamento','totais_vendas','total_suprimentos','total_sangrias','total_despesas','total_saidas','total_vendido','saldo_esperado');
 }
- 
+
 $agora_ts_banco = (int)$conn->query("SELECT EXTRACT(EPOCH FROM NOW())")->fetchColumn();
- 
+
 try {
     $stmt = $conn->query("
         SELECT c.*,
@@ -579,8 +626,7 @@ try {
     ");
     $comandas_abertas = $stmt->fetchAll();
 } catch (\Throwable $e) { $comandas_abertas = []; }
- 
-// ── HISTORICO: apenas comandas fechadas/canceladas desde a abertura do caixa atual
+
 try {
     if ($sessao_atual) {
         $stmt = $conn->prepare("
@@ -598,17 +644,35 @@ try {
         $historico = [];
     }
 } catch (\Throwable $e) { $historico = []; }
- 
+
+// Categorias filtradas por tenant
 try {
-    $categorias = $conn->query("SELECT c.id_categoria, c.nome, COUNT(p.id_produto) AS total FROM categorias c INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE AND p.estoque > 0 GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC")->fetchAll();
+    if ($is_master) {
+        $categorias = $conn->query("
+            SELECT c.id_categoria, c.nome, COUNT(p.id_produto) AS total
+            FROM categorias c
+            INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE AND p.estoque > 0
+            GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC
+        ")->fetchAll();
+    } else {
+        $stmt_cat = $conn->prepare("
+            SELECT c.id_categoria, c.nome, COUNT(p.id_produto) AS total
+            FROM categorias c
+            INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE AND p.estoque > 0
+                AND p.id_tenant = ?
+            GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC
+        ");
+        $stmt_cat->execute([$id_tenant]);
+        $categorias = $stmt_cat->fetchAll();
+    }
 } catch (\Throwable $e) { $categorias = []; }
- 
+
 try {
     $stmt_hist_sess = $conn->query("
-    SELECT * FROM caixa_sessoes 
-    WHERE DATE(aberto_em AT TIME ZONE 'America/Belem') = CURRENT_DATE AT TIME ZONE 'America/Belem'
-    ORDER BY aberto_em DESC
-");
+        SELECT * FROM caixa_sessoes
+        WHERE DATE(aberto_em AT TIME ZONE 'America/Belem') = CURRENT_DATE AT TIME ZONE 'America/Belem'
+        ORDER BY aberto_em DESC
+    ");
     $historico_sessoes = $stmt_hist_sess->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) { $historico_sessoes = []; }
 ?>
