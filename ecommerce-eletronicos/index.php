@@ -6,6 +6,9 @@ require_once 'config/verifica_plano.php';
 
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 $emp = getDadosEmpresa($conn);
+if (!empty($id_tenant)) {
+    verificar_plano_acesso(['basico'], $conn);
+}
 
 // ✅ Só bloqueia se for admin logado com tenant (não bloqueia visitantes comuns)
 if (isset($_SESSION['id_admin']) && !empty($id_tenant)) {
