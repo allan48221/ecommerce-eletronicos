@@ -38,6 +38,13 @@ function sessaoAtiva(PDO $conn): ?array {
     return $s->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
+// Helper: monta WHERE + binds para filtro de tenant em comandas
+// Retorna ['where' => string, 'binds' => array]
+function tenantFiltroComandas(bool $is_master, ?int $id_tenant, string $alias = 'c'): array {
+    if ($is_master) return ['where' => '', 'binds' => []];
+    return ['where' => " AND {$alias}.id_tenant = ?", 'binds' => [$id_tenant]];
+}
+
 // ===============================================================
 // AJAX ENDPOINTS
 // ===============================================================
@@ -46,16 +53,19 @@ function sessaoAtiva(PDO $conn): ?array {
 if (isset($_GET['ajax_comandas'])) {
     header('Content-Type: application/json');
     try {
-        $stmt = $conn->query("
+        $tf = tenantFiltroComandas($is_master, $id_tenant, 'c');
+        $stmt = $conn->prepare("
             SELECT c.*,
                    COUNT(ci.id_item) AS total_itens,
                    EXTRACT(EPOCH FROM c.criado_em AT TIME ZONE 'America/Belem')::int AS criado_em_ts
             FROM comandas c
             LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
             WHERE c.status = 'aberta'
+            {$tf['where']}
             GROUP BY c.id_comanda
             ORDER BY c.criado_em ASC
         ");
+        $stmt->execute($tf['binds']);
         $agora_ts = (int) $conn->query("SELECT EXTRACT(EPOCH FROM NOW())")->fetchColumn();
         echo json_encode(['agora_ts' => $agora_ts, 'comandas' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     } catch (\Throwable $e) { echo json_encode(['agora_ts' => time(), 'comandas' => []]); }
@@ -67,8 +77,13 @@ if (isset($_GET['detalhe_historico'])) {
     header('Content-Type: application/json');
     $id = intval($_GET['detalhe_historico']);
     try {
-        $sc = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? LIMIT 1");
-        $sc->execute([$id]);
+        if ($is_master) {
+            $sc = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? LIMIT 1");
+            $sc->execute([$id]);
+        } else {
+            $sc = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? AND id_tenant = ? LIMIT 1");
+            $sc->execute([$id, $id_tenant]);
+        }
         $comanda = $sc->fetch(PDO::FETCH_ASSOC);
         if (!$comanda) { echo json_encode(null); exit; }
         $si = $conn->prepare("SELECT * FROM comanda_itens WHERE id_comanda = ? ORDER BY criado_em");
@@ -84,7 +99,17 @@ if (isset($_GET['detalhe_historico'])) {
 // -- AJAX: itens da comanda --
 if (isset($_GET['itens_comanda'])) {
     header('Content-Type: application/json');
-    $id   = intval($_GET['itens_comanda']);
+    $id = intval($_GET['itens_comanda']);
+    // Valida que a comanda pertence ao tenant antes de retornar os itens
+    if ($is_master) {
+        $check = $conn->prepare("SELECT id_comanda FROM comandas WHERE id_comanda = ? LIMIT 1");
+        $check->execute([$id]);
+    } else {
+        $check = $conn->prepare("SELECT id_comanda FROM comandas WHERE id_comanda = ? AND id_tenant = ? LIMIT 1");
+        $check->execute([$id, $id_tenant]);
+    }
+    if (!$check->fetch()) { echo json_encode([]); exit; }
+
     $stmt = $conn->prepare("SELECT * FROM comanda_itens WHERE id_comanda = ? ORDER BY criado_em");
     $stmt->execute([$id]);
     $itens = $stmt->fetchAll();
@@ -219,17 +244,38 @@ if (isset($_GET['ajax_sessao'])) {
         $sessao['movimentacoes'] = $sm->fetchAll(PDO::FETCH_ASSOC);
 
         $ate = $sessao['fechado_em'] ? "'{$sessao['fechado_em']}'" : "NOW()";
-        $sv = $conn->query("
-            SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total
-            FROM pedidos
-            WHERE status = 'aprovado'
-              AND data_pedido >= '{$sessao['aberto_em']}'
-              AND data_pedido <= $ate
-            GROUP BY forma_pagamento
-        ");
+
+        // Filtro de tenant nas vendas por pagamento
+        if ($is_master) {
+            $sv = $conn->query("
+                SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total
+                FROM pedidos
+                WHERE status = 'aprovado'
+                  AND data_pedido >= '{$sessao['aberto_em']}'
+                  AND data_pedido <= $ate
+                GROUP BY forma_pagamento
+            ");
+        } else {
+            $sv = $conn->prepare("
+                SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total
+                FROM pedidos
+                WHERE status = 'aprovado'
+                  AND data_pedido >= '{$sessao['aberto_em']}'
+                  AND data_pedido <= $ate
+                  AND id_tenant = ?
+                GROUP BY forma_pagamento
+            ");
+            $sv->execute([$id_tenant]);
+        }
         $sessao['vendas_por_pagamento'] = $sv->fetchAll(PDO::FETCH_ASSOC);
 
-        $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate");
+        // Filtro de tenant nos totais
+        if ($is_master) {
+            $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate");
+        } else {
+            $st = $conn->prepare("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate AND id_tenant = ?");
+            $st->execute([$id_tenant]);
+        }
         $totais = $st->fetch(PDO::FETCH_ASSOC);
         $sessao['total_vendido'] = $totais['total'];
         $sessao['qtd_pedidos']   = $totais['qtd'];
@@ -274,8 +320,20 @@ if (isset($_GET['cancelar_item'])) {
     if ($id_item <= 0) { echo json_encode(['ok' => false, 'msg' => 'ID do item invalido.']); exit; }
     try {
         $conn->beginTransaction();
-        $stmt = $conn->prepare("SELECT id_comanda, subtotal FROM comanda_itens WHERE id_item = ?");
-        $stmt->execute([$id_item]);
+
+        // Busca o item e valida tenant via JOIN com comandas
+        if ($is_master) {
+            $stmt = $conn->prepare("SELECT ci.id_comanda, ci.subtotal FROM comanda_itens ci WHERE ci.id_item = ?");
+            $stmt->execute([$id_item]);
+        } else {
+            $stmt = $conn->prepare("
+                SELECT ci.id_comanda, ci.subtotal
+                FROM comanda_itens ci
+                JOIN comandas c ON c.id_comanda = ci.id_comanda
+                WHERE ci.id_item = ? AND c.id_tenant = ?
+            ");
+            $stmt->execute([$id_item, $id_tenant]);
+        }
         $item = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($item) {
             $id_comanda = $item['id_comanda'];
@@ -350,8 +408,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar_
     try {
         $sessao = sessaoAtiva($conn);
         if (!$sessao || $sessao['id_sessao'] != $id_sessao) throw new \Exception("Sessao invalida.");
-        $st = $conn->query("SELECT COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}'");
+
+        // Total de vendas filtrado por tenant
+        if ($is_master) {
+            $st = $conn->query("SELECT COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}'");
+        } else {
+            $st = $conn->prepare("SELECT COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND id_tenant = ?");
+            $st->execute([$id_tenant]);
+        }
         $total_sistema = floatval($st->fetchColumn());
+
         $sm = $conn->prepare("SELECT tipo, COALESCE(SUM(valor),0) AS soma FROM caixa_movimentacoes WHERE id_sessao = ? GROUP BY tipo");
         $sm->execute([$id_sessao]);
         $movs = []; foreach($sm->fetchAll(PDO::FETCH_ASSOC) as $r) $movs[$r['tipo']] = floatval($r['soma']);
@@ -386,6 +452,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'reabrir
 // POST: COMANDAS
 // ===============================================================
 
+// Helper: valida que a comanda pertence ao tenant do usuario logado
+function validarTenantComanda(PDO $conn, int $id_comanda, bool $is_master, ?int $id_tenant): ?array {
+    if ($is_master) {
+        $s = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? AND status = 'aberta'");
+        $s->execute([$id_comanda]);
+    } else {
+        $s = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? AND status = 'aberta' AND id_tenant = ?");
+        $s->execute([$id_comanda, $id_tenant]);
+    }
+    return $s->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
 // -- POST: FECHAR COMANDA --
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar') {
     $id_comanda      = intval($_POST['id_comanda'] ?? 0);
@@ -398,17 +476,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar'
             $stmt_itens = $conn->prepare("SELECT * FROM comanda_itens WHERE id_comanda = ? ORDER BY criado_em");
             $stmt_itens->execute([$id_comanda]);
             $itens = $stmt_itens->fetchAll();
-            $cmd = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? AND status = 'aberta'");
-            $cmd->execute([$id_comanda]);
-            $comanda = $cmd->fetch();
+            $comanda = validarTenantComanda($conn, $id_comanda, $is_master, $id_tenant);
             if (!$comanda) throw new \Exception("Comanda nao encontrada ou ja fechada.");
             foreach ($itens as $item) {
                 if (!empty($item['id_produto'])) {
                     $conn->prepare("UPDATE produtos SET estoque = estoque - ? WHERE id_produto = ? AND estoque >= ?")->execute([$item['quantidade'], $item['id_produto'], $item['quantidade']]);
                 }
             }
-            $stmt = $conn->prepare("INSERT INTO pedidos (nome_cliente, cpf_cliente, telefone_cliente, forma_pagamento, valor_produtos, valor_total, valor_frete, status, observacoes, data_pedido, tipo) VALUES (?, '', '', ?, ?, ?, 0, 'aprovado', ?, NOW(), 'presencial')");
-            $stmt->execute(['Comanda #' . $comanda['numero_comanda'], $forma_pagamento, $comanda['valor_total'], $comanda['valor_total'], 'Comanda #' . $comanda['numero_comanda'] . ($comanda['observacao'] ? ' - ' . $comanda['observacao'] : '')]);
+            $stmt = $conn->prepare("INSERT INTO pedidos (nome_cliente, cpf_cliente, telefone_cliente, forma_pagamento, valor_produtos, valor_total, valor_frete, status, observacoes, data_pedido, tipo, id_tenant) VALUES (?, '', '', ?, ?, ?, 0, 'aprovado', ?, NOW(), 'presencial', ?)");
+            $stmt->execute(['Comanda #' . $comanda['numero_comanda'], $forma_pagamento, $comanda['valor_total'], $comanda['valor_total'], 'Comanda #' . $comanda['numero_comanda'] . ($comanda['observacao'] ? ' - ' . $comanda['observacao'] : ''), $id_tenant]);
             $id_pedido = $conn->lastInsertId();
             $itens_comprovante = [];
             foreach ($itens as $item) {
@@ -444,7 +520,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'fechar'
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'cancelar') {
     $id_comanda = intval($_POST['id_comanda'] ?? 0);
     if ($id_comanda > 0) {
-        $conn->prepare("UPDATE comandas SET status = 'cancelada', fechado_em = NOW() WHERE id_comanda = ? AND status = 'aberta'")->execute([$id_comanda]);
+        if ($is_master) {
+            $conn->prepare("UPDATE comandas SET status = 'cancelada', fechado_em = NOW() WHERE id_comanda = ? AND status = 'aberta'")->execute([$id_comanda]);
+        } else {
+            $conn->prepare("UPDATE comandas SET status = 'cancelada', fechado_em = NOW() WHERE id_comanda = ? AND status = 'aberta' AND id_tenant = ?")->execute([$id_comanda, $id_tenant]);
+        }
         registrar_log($conn, 'comanda_cancelada', "Comanda cancelada", "ID comanda: $id_comanda", 0, $id_comanda, $nome_caixa);
         $msg = 'Comanda cancelada.'; $tipo_msg = 'success';
     }
@@ -458,8 +538,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'adicion
     else {
         try {
             $conn->beginTransaction();
-            $cmd = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? AND status = 'aberta'");
-            $cmd->execute([$id_comanda]); $comanda = $cmd->fetch();
+            $comanda = validarTenantComanda($conn, $id_comanda, $is_master, $id_tenant);
             if (!$comanda) throw new \Exception("Comanda nao encontrada ou ja fechada.");
             $total_novo = 0;
             foreach ($itens as $item) {
@@ -523,14 +602,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'nova_co
                 if (!empty($item['adicionais'])) foreach ($item['adicionais'] as $ad) $extras += floatval($ad['preco'] ?? 0) * $item['quantidade'];
                 $total += $sub + $extras;
             }
-            $stmt_exist = $conn->prepare("SELECT id_comanda FROM comandas WHERE numero_comanda = ? AND status = 'aberta' LIMIT 1");
-            $stmt_exist->execute([$numero_comanda]); $comanda_exist = $stmt_exist->fetch(PDO::FETCH_ASSOC);
+            // Busca comanda existente aberta, filtrando por tenant
+            if ($is_master) {
+                $stmt_exist = $conn->prepare("SELECT id_comanda FROM comandas WHERE numero_comanda = ? AND status = 'aberta' LIMIT 1");
+                $stmt_exist->execute([$numero_comanda]);
+            } else {
+                $stmt_exist = $conn->prepare("SELECT id_comanda FROM comandas WHERE numero_comanda = ? AND status = 'aberta' AND id_tenant = ? LIMIT 1");
+                $stmt_exist->execute([$numero_comanda, $id_tenant]);
+            }
+            $comanda_exist = $stmt_exist->fetch(PDO::FETCH_ASSOC);
             if ($comanda_exist) {
                 $id_comanda = $comanda_exist['id_comanda'];
                 $conn->prepare("UPDATE comandas SET valor_total = valor_total + ? WHERE id_comanda = ?")->execute([$total, $id_comanda]);
             } else {
-                $stmt = $conn->prepare("INSERT INTO comandas (numero_comanda, status, observacao, lancado_por, valor_total, criado_em) VALUES (?, 'aberta', ?, ?, ?, NOW()) RETURNING id_comanda");
-                $stmt->execute([$numero_comanda, $observacao_cmd, $nome_caixa, $total]);
+                $stmt = $conn->prepare("INSERT INTO comandas (numero_comanda, status, observacao, lancado_por, valor_total, criado_em, id_tenant) VALUES (?, 'aberta', ?, ?, ?, NOW(), ?) RETURNING id_comanda");
+                $stmt->execute([$numero_comanda, $observacao_cmd, $nome_caixa, $total, $id_tenant]);
                 $id_comanda = $stmt->fetch(PDO::FETCH_ASSOC)['id_comanda'];
             }
             foreach ($itens as $item) {
@@ -592,10 +678,22 @@ if ($sessao_atual) {
     $sm->execute([$id_s]);
     $movimentacoes = $sm->fetchAll(PDO::FETCH_ASSOC);
 
-    $sv = $conn->query("SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}' GROUP BY forma_pagamento");
+    // Filtro de tenant nas vendas por pagamento (renderizacao)
+    if ($is_master) {
+        $sv = $conn->query("SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}' GROUP BY forma_pagamento");
+    } else {
+        $sv = $conn->prepare("SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}' AND id_tenant = ? GROUP BY forma_pagamento");
+        $sv->execute([$id_tenant]);
+    }
     $vendas_pagamento = $sv->fetchAll(PDO::FETCH_ASSOC);
 
-    $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}'");
+    // Filtro de tenant nos totais (renderizacao)
+    if ($is_master) {
+        $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}'");
+    } else {
+        $st = $conn->prepare("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao_atual['aberto_em']}' AND id_tenant = ?");
+        $st->execute([$id_tenant]);
+    }
     $totais_vendas = $st->fetch(PDO::FETCH_ASSOC);
 
     $total_suprimentos = 0; $total_sangrias = 0; $total_despesas = 0;
@@ -613,32 +711,51 @@ if ($sessao_atual) {
 
 $agora_ts_banco = (int)$conn->query("SELECT EXTRACT(EPOCH FROM NOW())")->fetchColumn();
 
+// Comandas abertas filtradas por tenant
 try {
-    $stmt = $conn->query("
+    $tf = tenantFiltroComandas($is_master, $id_tenant, 'c');
+    $stmt = $conn->prepare("
         SELECT c.*,
                COUNT(ci.id_item) AS total_itens,
                EXTRACT(EPOCH FROM c.criado_em AT TIME ZONE 'America/Belem')::int AS criado_em_ts
         FROM comandas c
         LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
         WHERE c.status = 'aberta'
+        {$tf['where']}
         GROUP BY c.id_comanda
         ORDER BY c.criado_em ASC
     ");
+    $stmt->execute($tf['binds']);
     $comandas_abertas = $stmt->fetchAll();
 } catch (\Throwable $e) { $comandas_abertas = []; }
 
+// Historico filtrado por tenant
 try {
     if ($sessao_atual) {
-        $stmt = $conn->prepare("
-            SELECT c.*, COUNT(ci.id_item) AS total_itens
-            FROM comandas c
-            LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
-            WHERE c.status IN ('fechada', 'cancelada')
-              AND c.fechado_em >= ?
-            GROUP BY c.id_comanda
-            ORDER BY c.fechado_em DESC
-        ");
-        $stmt->execute([$sessao_atual['aberto_em']]);
+        if ($is_master) {
+            $stmt = $conn->prepare("
+                SELECT c.*, COUNT(ci.id_item) AS total_itens
+                FROM comandas c
+                LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
+                WHERE c.status IN ('fechada', 'cancelada')
+                  AND c.fechado_em >= ?
+                GROUP BY c.id_comanda
+                ORDER BY c.fechado_em DESC
+            ");
+            $stmt->execute([$sessao_atual['aberto_em']]);
+        } else {
+            $stmt = $conn->prepare("
+                SELECT c.*, COUNT(ci.id_item) AS total_itens
+                FROM comandas c
+                LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
+                WHERE c.status IN ('fechada', 'cancelada')
+                  AND c.fechado_em >= ?
+                  AND c.id_tenant = ?
+                GROUP BY c.id_comanda
+                ORDER BY c.fechado_em DESC
+            ");
+            $stmt->execute([$sessao_atual['aberto_em'], $id_tenant]);
+        }
         $historico = $stmt->fetchAll();
     } else {
         $historico = [];
@@ -667,6 +784,7 @@ try {
     }
 } catch (\Throwable $e) { $categorias = []; }
 
+// Historico de sessoes do dia
 try {
     $stmt_hist_sess = $conn->query("
         SELECT * FROM caixa_sessoes
