@@ -54,35 +54,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Criar admin do tenant
-    if ($acao === 'criar_admin_tenant') {
-        $id_tenant  = (int)$_POST['id_tenant'];
-        $nome       = trim($_POST['nome']    ?? '');
-        $email      = trim($_POST['email']   ?? '');
-        $usuario    = trim($_POST['usuario'] ?? '');
-        $senha      = trim($_POST['senha']   ?? '');
+ // Criar admin do tenant
+if ($acao === 'criar_admin_tenant') {
+    $id_tenant  = (int)$_POST['id_tenant'];
+    $nome       = trim($_POST['nome']    ?? '');
+    $email      = trim($_POST['email']   ?? '');
+    $usuario    = trim($_POST['usuario'] ?? '');
+    $senha      = trim($_POST['senha']   ?? '');
 
-        if ($nome && $email && $usuario && $senha && $id_tenant) {
-            $check = $conn->prepare("
-                SELECT COUNT(*) FROM admins 
-                WHERE (email = ? OR usuario = ?) AND id_tenant = ?
-            ");
-            $check->execute([$email, $usuario, $id_tenant]);
+    if ($nome && $email && $usuario && $senha && $id_tenant) {
+        $check = $conn->prepare("
+            SELECT COUNT(*) FROM admins 
+            WHERE (email = ? OR usuario = ?) AND id_tenant = ?
+        ");
+        $check->execute([$email, $usuario, $id_tenant]);
 
-            if ($check->fetchColumn() > 0) {
-                $msg = "ERRO: Email ou usuario ja cadastrado para este tenant.";
-            } else {
-                $hash = password_hash($senha, PASSWORD_BCRYPT);
-                $conn->prepare("
-                    INSERT INTO admins (nome, email, usuario, senha, id_tenant, ativo)
-                    VALUES (?, ?, ?, ?, ?, TRUE)
-                ")->execute([$nome, $email, $usuario, $hash, $id_tenant]);
-                $msg = "Admin <strong>$nome</strong> criado com sucesso!";
-            }
+        if ($check->fetchColumn() > 0) {
+            $msg = "ERRO: Email ou usuario ja cadastrado para este tenant.";
         } else {
-            $msg = "ERRO: Preencha todos os campos.";
+            $hash = password_hash($senha, PASSWORD_BCRYPT);
+
+            // INSERT em admins (login do painel)
+            $conn->prepare("
+                INSERT INTO admins (nome, email, usuario, senha, id_tenant, ativo)
+                VALUES (?, ?, ?, ?, ?, TRUE)
+            ")->execute([$nome, $email, $usuario, $hash, $id_tenant]);
+
+            // INSERT em staff tipo admin (autoriza cancelamentos + aparece na equipe)
+            $check_staff = $conn->prepare("
+                SELECT COUNT(*) FROM staff 
+                WHERE usuario = ? AND id_tenant = ?
+            ");
+            $check_staff->execute([$usuario, $id_tenant]);
+
+            if ($check_staff->fetchColumn() == 0) {
+                $conn->prepare("
+                    INSERT INTO staff (nome, usuario, senha, tipo, id_tenant, ativo)
+                    VALUES (?, ?, ?, 'admin', ?, TRUE)
+                ")->execute([$nome, $usuario, $hash, $id_tenant]);
+            }
+
+            $msg = "Admin <strong>$nome</strong> criado com sucesso! Acesso ao painel e autorizacao de cancelamentos liberados.";
         }
+    } else {
+        $msg = "ERRO: Preencha todos os campos.";
     }
+}
 
     // Renovar/alterar licença
     if ($acao === 'renovar') {
