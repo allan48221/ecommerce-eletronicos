@@ -2,7 +2,9 @@
 require_once 'config/database.php';
 require_once 'config/tema.php';
 require_once 'empresa_helper.php';
+require_once 'config/verifica_plano.php';
 $emp = getDadosEmpresa($conn);
+verificar_plano_acesso(['basico'], $conn); 
 
 // ✅ Pega o id_tenant da sessão
 $id_tenant = $_SESSION['id_tenant'] ?? null;
