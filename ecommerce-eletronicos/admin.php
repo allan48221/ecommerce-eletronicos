@@ -395,7 +395,12 @@ if ($res_cores) {
     </header>
 
     <div class="container">
-
+    <?php if (!empty($_GET['acesso_negado'])): ?>
+    <div style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;
+                border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:600;">
+         Seu plano não inclui acesso a essa tela.
+    </div>
+    <?php endif; ?>
         <!-- CABECALHO -->
         <div class="admin-header" style="background: white !important;">
             <div>
