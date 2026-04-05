@@ -7,13 +7,6 @@ if (!isset($_SESSION['id_admin'])) {
     exit;
 }
 
-// Conta comandas abertas para o badge
-try {
-    $stmt = $conn->query("SELECT COUNT(*) AS total, COALESCE(SUM(valor_total),0) AS soma FROM comandas WHERE status = 'aberta'");
-    $stats = $stmt->fetch();
-} catch (\Throwable $e) {
-    $stats = ['total' => 0, 'soma' => 0];
-}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
