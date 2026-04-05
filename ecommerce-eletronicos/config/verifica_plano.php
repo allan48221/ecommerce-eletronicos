@@ -1,11 +1,7 @@
 <?php
 function verificar_plano_acesso(array $planos_permitidos, $conn) {
 
-    // Visitante sem nenhuma sessão = cliente comum = passa sempre
-    if (empty($_SESSION['id_tenant']) && empty($_SESSION['id_admin'])) return;
-
-    // Tem id_tenant na sessão mas não é admin = passa
-    // (nunca deve acontecer mas por segurança)
+    // Sem tenant na sessão = visitante comum = passa sempre
     if (empty($_SESSION['id_tenant'])) return;
 
     // Pega o plano da sessão
@@ -21,7 +17,6 @@ function verificar_plano_acesso(array $planos_permitidos, $conn) {
         }
     }
 
-    // Plano não permitido = redireciona para o admin
     if (!$plano || !$achou) {
         header('Location: admin.php?acesso_negado=1');
         exit;
