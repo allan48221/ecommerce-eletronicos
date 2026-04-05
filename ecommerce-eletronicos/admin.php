@@ -9,11 +9,9 @@ if (!isset($_SESSION['id_admin'])) {
 $is_master = empty($_SESSION['id_tenant']);
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 
-// PostgreSQL: INTERVAL com sintaxe correta
 $conn->query("UPDATE pedidos SET status = 'expirado', data_acao = NOW()
               WHERE status = 'pendente' AND data_pedido < NOW() - INTERVAL '24 hours'");
 
-// PDO: fetchColumn() para COUNT simples
 $stats = [];
 $stats['total_clientes'] = $conn->query("SELECT COUNT(*) FROM clientes WHERE ativo = TRUE")->fetchColumn();
 $stats['total_produtos'] = $conn->query("SELECT COUNT(*) FROM produtos WHERE ativo = TRUE")->fetchColumn();
@@ -21,7 +19,6 @@ $stats['total_pedidos']  = $conn->query("SELECT COUNT(*) FROM compras")->fetchCo
 $stats['total_vendas']   = $conn->query("SELECT COALESCE(SUM(valor_total),0) FROM compras")->fetchColumn();
 $stats['estoque_baixo']  = $conn->query("SELECT COUNT(*) FROM produtos WHERE estoque < 10 AND ativo = TRUE")->fetchColumn();
 
-// Cola isso junto com as outras queries no topo do admin.php
 $subdominio_logout = '';
 if (!empty($id_tenant)) {
     $stmt_sub = $conn->prepare("SELECT subdominio FROM empresas_tenants WHERE id_tenant = ?");
@@ -31,7 +28,12 @@ if (!empty($id_tenant)) {
 $url_saida = $subdominio_logout
     ? 'logout.php?redirect=index.php&tenant=' . urlencode($subdominio_logout)
     : 'logout.php';
-// Top 3 mais vistos — filtrado por tenant
+
+// Verifica se o plano tem acesso a loja
+$plano_admin  = mb_strtolower($_SESSION['plano_nome'] ?? '');
+$tem_loja     = empty($id_tenant) || str_contains($plano_admin, 'basico') || str_contains('basico', $plano_admin);
+$url_ver_loja = $subdominio_logout ? 'index.php?tenant=' . urlencode($subdominio_logout) : 'index.php';
+
 if ($is_master) {
     $mais_vistos = $conn->query("
         SELECT p.id_produto, p.nome, p.imagem, p.preco, COUNT(pv.id) as total_views
@@ -51,7 +53,6 @@ if ($is_master) {
     $mais_vistos->execute([$id_tenant]);
 }
 
-// Todos os produtos (estoque completo) — filtrado por tenant
 if ($is_master) {
     $todos_produtos = $conn->query("SELECT id_produto, nome, estoque, preco FROM produtos ORDER BY estoque ASC");
 } else {
@@ -59,7 +60,6 @@ if ($is_master) {
     $todos_produtos->execute([$id_tenant]);
 }
 
-// Estoque baixo — filtrado por tenant
 if ($is_master) {
     $produtos_baixo = $conn->query("SELECT * FROM produtos WHERE estoque < 10 AND ativo = TRUE ORDER BY estoque ASC LIMIT 5");
 } else {
@@ -70,7 +70,6 @@ if ($is_master) {
 $filtro_pedido = $_GET['pedidos'] ?? 'pendente';
 if (!in_array($filtro_pedido, ['pendente','confirmado','cancelado','expirado','todos'])) $filtro_pedido = 'pendente';
 
-// PDO: sem interpolacao de variavel no WHERE - usar prepare
 if ($filtro_pedido === 'todos') {
     $stmt_pedidos = $conn->query("SELECT * FROM pedidos ORDER BY data_pedido DESC");
 } else {
@@ -94,28 +93,19 @@ if ($res_cores) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-    <title>Painel Admin - TechStore</title>
+    <title>Painel Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" type="image/png" href="favicon.png?v=1">
     <?= aplicar_tema($conn) ?>
     <style>
-        /* BASE */
         * { box-sizing: border-box; }
-
         .admin-header {
-            background: #fff;
-            padding: 1.5rem 2rem;
-            border-radius: 1rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.8rem;
+            background: #fff; padding: 1.5rem 2rem; border-radius: 1rem;
+            margin-bottom: 1.5rem; display: flex; justify-content: space-between;
+            align-items: center; flex-wrap: wrap; gap: 0.8rem;
         }
         .admin-header h1 { margin-bottom: 0.3rem; font-size: 1.4rem; }
         .admin-header p  { opacity: 0.7; font-size: 0.9rem; margin: 0; }
-
         .visitantes-card {
             background: linear-gradient(135deg, #065f46 0%, #059669 100%);
             color: white; padding: 1.2rem 1.5rem; border-radius: 1rem;
@@ -127,7 +117,6 @@ if ($res_cores) {
         .vis-label  { font-size: 0.82rem; opacity: 0.85; margin-top: 0.2rem; }
         .vis-dot { width:9px;height:9px;background:#6ee7b7;border-radius:50%;display:inline-block;margin-right:4px;animation:piscar 1.5s infinite; }
         @keyframes piscar { 0%,100%{opacity:1}50%{opacity:0.2} }
-
         .quick-actions { display: grid; grid-template-columns: repeat(2,1fr); gap: 0.8rem; }
         .action-btn {
             padding: 0.85rem; background: white; border: 2px solid var(--primary);
@@ -136,8 +125,6 @@ if ($res_cores) {
             transition: all 0.2s; position: relative;
         }
         .action-btn:hover { background: var(--primary); color: white; }
-
-        /* NOTIFICACAO */
         .notif-wrap { position: relative; display: inline-block; font-size: 1.8rem; text-decoration: none; }
         .notif-badge-count {
             position: absolute; top: -6px; right: -10px;
@@ -146,8 +133,6 @@ if ($res_cores) {
             animation: pulsar 1.5s infinite; line-height: 1.4;
         }
         @keyframes pulsar { 0%,100%{transform:scale(1)}50%{transform:scale(1.25)} }
-
-        /* TOP 3 */
         .top-produtos-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.8rem; }
         .top-produto-card {
             background: white; border-radius: 0.75rem; padding: 1rem 0.8rem;
@@ -166,8 +151,6 @@ if ($res_cores) {
         .prod-nome  { font-size: 0.78rem; font-weight: 600; color: var(--dark); line-height: 1.3; }
         .prod-views { font-size: 0.72rem; color: var(--gray); }
         .prod-views span { font-weight: 700; color: var(--primary); }
-
-        /* ESTOQUE */
         table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         table th { background: var(--light); padding: 0.7rem 0.6rem; text-align: left; font-weight: 600; color: var(--dark); font-size: 0.82rem; }
         table td { padding: 0.6rem; border-bottom: 1px solid var(--light); }
@@ -182,8 +165,6 @@ if ($res_cores) {
             transition:all .2s;white-space:nowrap;
         }
         .btn-editar-produto:hover { background:#007bff;color:#fff; }
-
-        /* PEDIDOS */
         .pedidos-abas { display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1rem; }
         .pedidos-aba {
             padding:0.3rem 0.8rem;border-radius:2rem;text-decoration:none;
@@ -196,7 +177,6 @@ if ($res_cores) {
         .aba-cancelado {background:#f8d7da;color:#842029;border-color:#dc3545}
         .aba-expirado  {background:#e2e3e5;color:#41464b;border-color:#6c757d}
         .aba-todos     {background:#cfe2ff;color:#084298;border-color:#0d6efd}
-
         .pedido-card {
             background:#f9fafb;border-radius:0.6rem;
             padding:0.7rem 0.9rem;margin-bottom:0.5rem;
@@ -206,14 +186,12 @@ if ($res_cores) {
         .pedido-card.confirmado {border-left-color:#198754}
         .pedido-card.cancelado  {border-left-color:#dc3545}
         .pedido-card.expirado   {border-left-color:#6c757d;opacity:0.75}
-
         .pedido-topo {
             display:flex;justify-content:space-between;align-items:center;
             flex-wrap:wrap;gap:0.3rem;margin-bottom:0.5rem;
         }
         .pedido-num  {font-weight:700;font-size:0.88rem;color:var(--dark)}
         .pedido-data {font-size:0.7rem;color:#888;margin-top:1px}
-
         .p-status {
             padding:0.15rem 0.55rem;border-radius:2rem;font-size:0.65rem;
             font-weight:700;text-transform:uppercase;white-space:nowrap;
@@ -222,22 +200,14 @@ if ($res_cores) {
         .p-status.confirmado {background:#d1e7dd;color:#0a3622}
         .p-status.cancelado  {background:#f8d7da;color:#842029}
         .p-status.expirado   {background:#e2e3e5;color:#41464b}
-
         .pedido-infos {
             display:grid;grid-template-columns:repeat(4,1fr);
             gap:0.35rem 0.5rem;margin-bottom:0.5rem;
         }
         .pi-label {font-size:0.62rem;color:#aaa;text-transform:uppercase;display:block}
         .pi-val   {font-weight:600;font-size:0.75rem;margin-top:1px}
-
-        .pedido-endereco,.pedido-obs {
-            font-size:0.75rem;color:#555;margin-bottom:0.4rem;line-height:1.4;
-        }
-
-        .pedido-itens {
-            background:white;border-radius:0.4rem;
-            padding:0.4rem 0.6rem;margin-bottom:0.4rem;
-        }
+        .pedido-endereco,.pedido-obs { font-size:0.75rem;color:#555;margin-bottom:0.4rem;line-height:1.4; }
+        .pedido-itens { background:white;border-radius:0.4rem;padding:0.4rem 0.6rem;margin-bottom:0.4rem; }
         .pi-title {font-size:0.62rem;color:#aaa;text-transform:uppercase;margin-bottom:0.3rem;display:block}
         .pedido-item-linha {
             display:flex;justify-content:space-between;
@@ -245,15 +215,10 @@ if ($res_cores) {
             flex-direction: column;
         }
         .pedido-item-linha:last-child {border-bottom:none}
-
-        .pedido-totais {
-            display:flex;gap:0.8rem;font-size:0.75rem;
-            margin-bottom:0.5rem;flex-wrap:wrap;align-items:center;
-        }
+        .pedido-totais { display:flex;gap:0.8rem;font-size:0.75rem;margin-bottom:0.5rem;flex-wrap:wrap;align-items:center; }
         .pedido-totais span  {color:#888}
         .pedido-totais strong{color:var(--dark)}
         .p-total-final {font-size:0.85rem;color:#198754 !important;font-weight:700}
-
         .pedido-acoes {display:flex;gap:0.4rem;flex-wrap:wrap}
         .btn-p-confirmar,.btn-p-cancelar {
             padding:0.4rem 0.9rem;border:none;border-radius:0.4rem;
@@ -264,11 +229,8 @@ if ($res_cores) {
         .btn-p-cancelar  {background:#dc3545;color:white}
         .btn-p-cancelar:hover  {background:#b02a37}
         .btn-p-confirmar:disabled,.btn-p-cancelar:disabled {opacity:0.45;cursor:not-allowed}
-
         .pedidos-vazio {text-align:center;padding:1.5rem;color:#888}
         .pedidos-vazio span {font-size:2rem;display:block;margin-bottom:0.3rem}
-
-        /* TOAST */
         #p-toast {
             position:fixed;bottom:1rem;right:1rem;padding:0.75rem 1.2rem;
             border-radius:0.6rem;color:white;font-weight:600;font-size:0.85rem;
@@ -276,8 +238,6 @@ if ($res_cores) {
         }
         #p-toast.sucesso {background:#198754}
         #p-toast.erro    {background:#dc3545}
-
-        /* TEMA */
         .tema-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1rem;margin-bottom:1.2rem}
         .tema-campo {display:flex;flex-direction:column;gap:0.35rem}
         .tema-campo label {font-size:0.85rem;font-weight:600;color:var(--dark)}
@@ -291,117 +251,90 @@ if ($res_cores) {
         .btn-salvar-tema {padding:0.75rem 1.8rem;background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:white;border:none;border-radius:0.7rem;font-size:0.95rem;font-weight:700;cursor:pointer;transition:all 0.25s}
         .btn-salvar-tema:hover {transform:translateY(-2px)}
         #tema-feedback {display:none;margin-top:0.8rem;padding:0.75rem 1rem;border-radius:0.5rem;font-weight:600;font-size:0.9rem}
-
-        /* MOBILE */
         @media (max-width: 768px) {
             .navbar { display: none !important; }
             .container { padding: 0 0.6rem !important; margin: 0.5rem auto !important; }
-
             .admin-header { padding: 0.8rem 1rem !important; margin-bottom: 0.8rem !important; border-radius: 0.75rem !important; }
             .admin-header h1 { font-size: 1rem !important; }
             .admin-header p  { font-size: 0.75rem !important; }
             .notif-wrap { font-size: 1.4rem !important; }
-
             .visitantes-card { padding: 0.75rem 1rem !important; gap: 0.6rem !important; margin-bottom: 0.8rem !important; }
             .vis-icon   { font-size: 1.4rem !important; }
             .vis-numero { font-size: 1.4rem !important; }
             .vis-label  { font-size: 0.7rem !important; }
-
             .card { padding: 0.8rem !important; border-radius: 0.7rem !important; margin-bottom: 0.8rem !important; }
             .card-title { font-size: 0.82rem !important; margin-bottom: 0.6rem !important; }
             .quick-actions { grid-template-columns: 1fr 1fr !important; gap: 0.5rem !important; }
             .action-btn { padding: 0.6rem 0.4rem !important; font-size: 0.75rem !important; }
-
             .top-produtos-grid { gap: 0.4rem !important; }
             .top-produto-card { padding: 0.7rem 0.4rem !important; }
             .top-produto-card img { width: 40px !important; height: 40px !important; }
             .prod-nome  { font-size: 0.65rem !important; }
             .prod-views { font-size: 0.6rem !important; }
             .rank-badge { width: 22px !important; height: 22px !important; font-size: 0.6rem !important; }
-
             table { font-size: 0.7rem !important; }
             table th { padding: 0.4rem 0.35rem !important; font-size: 0.68rem !important; }
             table td { padding: 0.35rem !important; font-size: 0.68rem !important; }
             table th:first-child, table td:first-child { display: none !important; }
             .btn-editar-produto { font-size: 0.65rem !important; padding: 3px 7px !important; }
             .badge-critico, .badge-ok { font-size: 0.6rem !important; padding: 0.1rem 0.35rem !important; }
-
             .pedidos-abas { gap: 0.25rem !important; margin-bottom: 0.7rem !important; }
             .pedidos-aba  { font-size: 0.68rem !important; padding: 0.22rem 0.55rem !important; }
-
             .pedido-card  { padding: 0.55rem 0.7rem !important; margin-bottom: 0.4rem !important; }
             .pedido-num   { font-size: 0.78rem !important; }
             .pedido-data  { font-size: 0.62rem !important; }
             .p-status     { font-size: 0.58rem !important; padding: 0.12rem 0.45rem !important; }
-
             .pedido-infos { grid-template-columns: repeat(2,1fr) !important; gap: 0.25rem !important; margin-bottom: 0.4rem !important; }
             .pi-label { font-size: 0.58rem !important; }
             .pi-val   { font-size: 0.7rem !important; }
-
             .pedido-endereco, .pedido-obs { font-size: 0.68rem !important; margin-bottom: 0.3rem !important; }
-
             .pedido-itens { padding: 0.35rem 0.5rem !important; margin-bottom: 0.35rem !important; }
             .pi-title { font-size: 0.58rem !important; }
             .pedido-item-linha { font-size: 0.68rem !important; padding: 0.15rem 0 !important; }
-
             .pedido-totais { font-size: 0.68rem !important; gap: 0.5rem !important; margin-bottom: 0.4rem !important; }
             .p-total-final { font-size: 0.75rem !important; }
-
             .btn-p-confirmar, .btn-p-cancelar { font-size: 0.68rem !important; padding: 0.3rem 0.7rem !important; }
-
             .tema-grid { grid-template-columns: repeat(2,1fr) !important; gap: 0.6rem !important; }
             .tema-preset-btn { font-size: 0.7rem !important; padding: 0.3rem 0.65rem !important; }
             .btn-salvar-tema { width: 100% !important; font-size: 0.85rem !important; padding: 0.65rem !important; }
-
             .admin-grid { grid-template-columns: 1fr !important; }
         }
-
-        .btn-ver-loja-mobile {
-            display: none;
-        }
-
+        .btn-ver-loja-mobile { display: none; }
         @media (max-width: 768px) {
             .btn-ver-loja-mobile {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 0.4rem;
-                width: 100%;
-                padding: 0.65rem;
-                margin-bottom: 0.8rem;
+                display: flex; align-items: center; justify-content: center;
+                gap: 0.4rem; width: 100%; padding: 0.65rem; margin-bottom: 0.8rem;
                 background: linear-gradient(135deg, var(--primary), var(--primary-dark, #1e40af));
-                color: white;
-                font-weight: 700;
-                font-size: 0.82rem;
-                border-radius: 0.6rem;
-                text-decoration: none;
+                color: white; font-weight: 700; font-size: 0.82rem;
+                border-radius: 0.6rem; text-decoration: none;
                 box-shadow: 0 3px 10px rgba(37,99,235,0.3);
             }
         }
-        .pil-adicionais {
-            display: block;
-        }
+        .pil-adicionais { display: block; }
     </style>
 </head>
 <body>
     <header class="navbar">
         <div class="container">
-            <a href="index.php" class="logo"></a>
+            <a href="<?= $url_ver_loja ?>" class="logo"></a>
             <nav><ul>
-                <li><a href="<?= $subdominio_logout ? 'index.php?tenant=' . urlencode($subdominio_logout) : 'index.php' ?>">Ver Loja</a></li>
+                <?php if ($tem_loja): ?>
+                <li><a href="<?= $url_ver_loja ?>">Ver Loja</a></li>
+                <?php endif; ?>
                 <li><a href="<?= $url_saida ?>" class="btn-carrinho" style="background:var(--danger)">Sair</a></li>
             </ul></nav>
         </div>
     </header>
 
     <div class="container">
+
     <?php if (!empty($_GET['acesso_negado'])): ?>
-<div data-aviso-plano style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;
-            border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:600;">
-     Seu plano não inclui acesso a essa tela.
-</div>
-<?php endif; ?>
-        <!-- CABECALHO -->
+    <div data-aviso-plano style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;
+                border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:600;">
+        Seu plano nao inclui acesso a essa tela.
+    </div>
+    <?php endif; ?>
+
         <div class="admin-header" style="background: white !important;">
             <div>
                 <h1>Ola, <?= htmlspecialchars($_SESSION['nome_admin']) ?>!</h1>
@@ -416,9 +349,10 @@ if ($res_cores) {
             <?php endif; ?>
         </div>
 
-       <a href="<?= $subdominio_logout ? 'index.php?tenant=' . urlencode($subdominio_logout) : 'index.php' ?>" class="btn-ver-loja-mobile">Ver Loja</a>
+        <?php if ($tem_loja): ?>
+        <a href="<?= $url_ver_loja ?>" class="btn-ver-loja-mobile">Ver Loja</a>
+        <?php endif; ?>
 
-        <!-- VISITANTES -->
         <div class="visitantes-card">
             <div class="vis-icon"></div>
             <div class="vis-info">
@@ -427,15 +361,12 @@ if ($res_cores) {
             </div>
         </div>
 
-        <!-- ACOES -->
         <div class="card">
             <h2 class="card-title">Acoes</h2>
             <div class="quick-actions">
-
                 <?php if ($is_master || tela_liberada('novo_produto')): ?>
                 <a href="cadastro_produto.php" class="action-btn">Novo Produto</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('pedidos')): ?>
                 <a href="#secao-pedidos" class="action-btn"
                    style="<?= $count_pendentes > 0 ? 'border-color:#ffc107;color:#856404;background:#fffbeb' : '' ?>">
@@ -448,55 +379,42 @@ if ($res_cores) {
                     <?php endif; ?>
                 </a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('categorias')): ?>
                 <a href="categorias.php" class="action-btn">Categorias</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('dashboard_vendas')): ?>
                 <a href="dashboard_vendas.php" class="action-btn">Dashboard de Vendas</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('venda_presencial')): ?>
-                <a href="venda_presencial.php" class="action-btn destaque">Venda Presencial</a>
+                <a href="venda_presencial.php" class="action-btn">Venda Presencial</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('cancelamentos')): ?>
                 <a href="cancelamentos.php" class="action-btn">Cancelamentos</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('logs')): ?>
                 <a href="logs.php" class="action-btn">Logs</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('usuarios')): ?>
                 <a href="cadastrar_vendedor.php" class="action-btn">Usuarios</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('adicionais')): ?>
                 <a href="adicionais_admin.php" class="action-btn">Adicionais</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('modo_restaurante')): ?>
                 <a href="modo_restaurante.php" class="action-btn">Modo Restaurante</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('historico')): ?>
                 <a href="historico_comandas.php" class="action-btn">Historico</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('impressoras')): ?>
                 <a href="impressoras.php" class="action-btn">Impressoras</a>
                 <?php endif; ?>
-
                 <?php if ($is_master || tela_liberada('empresa')): ?>
                 <a href="empresa.php" class="action-btn">Empresa</a>
                 <?php endif; ?>
-
             </div>
         </div>
 
-        <!-- TOP 3 -->
         <div class="card">
             <h2 class="card-title">Top 3 Mais Vistos</h2>
             <?php
@@ -520,7 +438,6 @@ if ($res_cores) {
             <?php endif; ?>
         </div>
 
-        <!-- PEDIDOS -->
         <?php
         $labels_status = [
             'pendente'   => 'Pendente',
@@ -528,14 +445,12 @@ if ($res_cores) {
             'cancelado'  => 'Cancelado',
             'expirado'   => 'Expirado',
         ];
-
         foreach ($pedidos as $p):
             $s = $conn->prepare("SELECT * FROM itens_pedido WHERE id_pedido = ?");
             $s->execute([$p['id_pedido']]);
             $itens_p = $s->fetchAll();
         ?>
         <div class="pedido-card <?= $p['status'] ?>" id="pcard-<?= $p['id_pedido'] ?>">
-
             <div class="pedido-topo">
                 <div>
                     <div class="pedido-num">Pedido #<?= $p['id_pedido'] ?></div>
@@ -550,23 +465,18 @@ if ($res_cores) {
                 </div>
                 <span class="p-status <?= $p['status'] ?>"><?= $labels_status[$p['status']] ?? $p['status'] ?></span>
             </div>
-
             <div class="pedido-infos">
                 <div><span class="pi-label">Cliente</span><span class="pi-val"><?= htmlspecialchars($p['nome_cliente']) ?></span></div>
                 <div><span class="pi-label">Telefone</span><span class="pi-val"><?= htmlspecialchars($p['telefone_cliente']) ?></span></div>
                 <div><span class="pi-label">Pagamento</span><span class="pi-val"><?= htmlspecialchars($p['forma_pagamento']) ?></span></div>
             </div>
-
             <?php if ($p['observacoes']): ?>
             <div class="pedido-obs">
                 <span class="pi-label">Obs:</span> <?= htmlspecialchars($p['observacoes']) ?>
             </div>
             <?php endif; ?>
-
-            <!-- PRODUTOS + ADICIONAIS -->
             <div class="pedido-itens">
                 <span class="pi-title">Produtos</span>
-
                 <?php foreach ($itens_p as $item):
                     $adicionais_item = [];
                     if (!empty($item['adicionais_json'])) {
@@ -579,7 +489,6 @@ if ($res_cores) {
                         <span class="pil-qtd">(<?= $item['quantidade'] ?>x)</span>
                         <span class="pil-preco">R$ <?= number_format($item['subtotal'], 2, ',', '.') ?></span>
                     </div>
-
                     <?php if (!empty($adicionais_item)): ?>
                     <div class="pil-adicionais">
                         <?php foreach ($adicionais_item as $ad): ?>
@@ -595,25 +504,21 @@ if ($res_cores) {
                 </div>
                 <?php endforeach; ?>
             </div>
-
             <div class="pedido-totais">
                 <div>
                     <span>Total: </span>
                     <strong class="p-total-final">R$ <?= number_format($p['valor_total'], 2, ',', '.') ?></strong>
                 </div>
             </div>
-
             <?php if ($p['status'] === 'pendente'): ?>
             <div class="pedido-acoes">
                 <button class="btn-p-confirmar" onclick="acaoPedido(<?= $p['id_pedido'] ?>, 'confirmar', this)">Confirmar Venda</button>
                 <button class="btn-p-cancelar"  onclick="acaoPedido(<?= $p['id_pedido'] ?>, 'cancelar',  this)">Nao Realizada</button>
             </div>
             <?php endif; ?>
-
         </div>
         <?php endforeach; ?>
 
-        <!-- ESTOQUE COMPLETO -->
         <div class="card">
             <h2 class="card-title">Estoque de Produtos</h2>
             <table class="estoque-table">
@@ -641,7 +546,6 @@ if ($res_cores) {
             </table>
         </div>
 
-        <!-- ESTOQUE BAIXO -->
         <div class="admin-grid">
             <div class="card">
                 <h2 class="card-title">Estoque Baixo</h2>
@@ -659,7 +563,6 @@ if ($res_cores) {
             </div>
         </div>
 
-        <!-- TEMA -->
         <div class="card">
             <h2 class="card-title">Tema do Sistema</h2>
             <p style="color:var(--gray);font-size:0.85rem;margin-bottom:1rem">Personalize as cores. Aplicado em todas as paginas imediatamente.</p>
@@ -711,7 +614,6 @@ if ($res_cores) {
     <div id="p-toast"></div>
 
     <script>
-    // Visitantes
     function atualizarVisitantes() {
         fetch('get_visitas.php').then(r=>r.json()).then(d=>{
             const el=document.getElementById('contador-visitantes');
@@ -721,7 +623,6 @@ if ($res_cores) {
     atualizarVisitantes();
     setInterval(atualizarVisitantes,10000);
 
-    // Pedidos
     function acaoPedido(id,acao,btn) {
         const msg=acao==='confirmar'?'Confirmar venda e dar baixa no estoque?':'Marcar como nao realizada? Estoque NAO sera alterado.';
         if(!confirm(msg)) return;
@@ -740,7 +641,6 @@ if ($res_cores) {
     }
     setTimeout(()=>location.reload(),60000);
 
-    // Tema
     function atualizarHex(input,spanId){document.getElementById(spanId).textContent=input.value;}
     function aplicarPreset(primary,primaryDark,secondary,danger,grad1,grad2){
         const map={inp_primary:['hex_primary',primary],inp_primary_dark:['hex_primary_dark',primaryDark],inp_secondary:['hex_secondary',secondary],inp_danger:['hex_danger',danger],inp_grad1:['hex_grad1',grad1],inp_grad2:['hex_grad2',grad2]};
@@ -762,7 +662,6 @@ if ($res_cores) {
     }
     </script>
 
-    <!-- NOTIFICACOES DO NAVEGADOR -->
     <script>
     (function(){
         let ultimaVerificacao=new Date().toISOString().slice(0,19).replace('T',' ');
@@ -771,7 +670,7 @@ if ($res_cores) {
         function dispararNotificacao(pedido){
             if(Notification.permission!=='granted')return;
             const total=parseFloat(pedido.valor_total).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-            const notif=new Notification('Novo Pedido - TechStore',{body:`Cliente: ${pedido.nome_cliente}\nTotal: ${total}`,icon:'favicon.png',tag:'pedido-'+pedido.id_pedido,requireInteraction:true});
+            const notif=new Notification('Novo Pedido',{body:'Cliente: '+pedido.nome_cliente+'\nTotal: '+total,icon:'favicon.png',tag:'pedido-'+pedido.id_pedido,requireInteraction:true});
             notif.onclick=function(){window.focus();const s=document.getElementById('secao-pedidos');if(s)s.scrollIntoView({behavior:'smooth'});notif.close();};
         }
         function verificarNovos(){
@@ -802,15 +701,15 @@ if ($res_cores) {
         }
     })();
 
-        (function(){
-    const aviso = document.querySelector('[data-aviso-plano]');
-    if (!aviso) return;
-    setTimeout(() => {
-        aviso.style.transition = 'opacity 0.5s';
-        aviso.style.opacity = '0';
-        setTimeout(() => aviso.remove(), 500);
-    }, 4000); // some após 4 segundos
-})();
+    (function(){
+        const aviso = document.querySelector('[data-aviso-plano]');
+        if (!aviso) return;
+        setTimeout(() => {
+            aviso.style.transition = 'opacity 0.5s';
+            aviso.style.opacity = '0';
+            setTimeout(() => aviso.remove(), 500);
+        }, 4000);
+    })();
     </script>
 </body>
 </html>
