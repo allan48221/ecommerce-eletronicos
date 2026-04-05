@@ -5,7 +5,19 @@ require_once 'empresa_helper.php';
 require_once 'config/verifica_plano.php';
 $emp = getDadosEmpresa($conn);
 verificar_plano_acesso(['basico'], $conn); 
-
+// DEBUG TEMPORÁRIO - remover depois
+$stmt_debug = $conn->prepare("
+    SELECT p.nome, p.id_plano
+    FROM licencas l
+    INNER JOIN planos p ON p.id_plano = l.id_plano
+    WHERE l.id_tenant = ?
+    AND l.ativo = TRUE
+    AND l.data_vencimento >= CURRENT_DATE
+");
+$stmt_debug->execute([$id_tenant]);
+$debug = $stmt_debug->fetch();
+var_dump($debug);
+die();
 // ✅ Pega o id_tenant da sessão
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 
