@@ -1,14 +1,17 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Configuração de Impressoras</title>
-
 <?php
-ob_start(); // buffer — garante que header() funciona mesmo com whitespace acidental
+ob_start(); // DEVE ser a primeira linha do arquivo
 require_once 'config/database.php';
 require_once 'config/tema.php';
+
+// ── Apenas admin tem acesso ──
+if (!isset($_SESSION['id_admin'])) {
+    header('Location: login.php');
+    exit;
+}
+
+// ── TENANT ──
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
 
 // ── Garante que a tabela existe ──────────────────────────────
 $conn->exec("
@@ -19,15 +22,21 @@ $conn->exec("
         porta         VARCHAR(10)  NOT NULL DEFAULT '9100',
         categorias    TEXT[]       NOT NULL DEFAULT '{}',
         ativo         BOOLEAN      NOT NULL DEFAULT TRUE,
+        id_tenant     INTEGER,
         criado_em     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         atualizado_em TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
 ");
 
+// Adiciona id_tenant na tabela caso já exista sem a coluna
+try {
+    $conn->exec("ALTER TABLE impressoras ADD COLUMN IF NOT EXISTS id_tenant INTEGER");
+} catch (\Throwable $e) {}
+
 $msg      = '';
 $tipo_msg = '';
 
-// ── AJAX: endpoints JSON — ANTES de qualquer echo/html ───────
+// ── AJAX: endpoints JSON ─────────────────────────────────────
 $acao = $_GET['acao'] ?? $_POST['acao'] ?? '';
 
 if ($acao === 'salvar' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -41,20 +50,27 @@ if ($acao === 'salvar' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
-        $conn->exec("DELETE FROM impressoras");
+        // Deleta apenas as impressoras do tenant atual
+        if ($is_master) {
+            $conn->exec("DELETE FROM impressoras");
+        } else {
+            $conn->prepare("DELETE FROM impressoras WHERE id_tenant = ?")->execute([$id_tenant]);
+        }
+
         $stmt = $conn->prepare("
-            INSERT INTO impressoras (id, nome, ip, porta, categorias)
-            VALUES (:id, :nome, :ip, :porta, :cats)
+            INSERT INTO impressoras (id, nome, ip, porta, categorias, id_tenant)
+            VALUES (:id, :nome, :ip, :porta, :cats, :id_tenant)
         ");
         foreach ($body['printers'] as $p) {
             $cats    = $p['cats'] ?? $p['categorias'] ?? [];
             $catsStr = '{' . implode(',', array_map(fn($c) => '"' . addslashes($c) . '"', $cats)) . '}';
             $stmt->execute([
-                ':id'   => intval($p['id']),
-                ':nome' => $p['nome']  ?? '',
-                ':ip'   => $p['ip']    ?? '',
-                ':porta'=> $p['porta'] ?? '9100',
-                ':cats' => $catsStr,
+                ':id'        => intval($p['id']),
+                ':nome'      => $p['nome']  ?? '',
+                ':ip'        => $p['ip']    ?? '',
+                ':porta'     => $p['porta'] ?? '9100',
+                ':cats'      => $catsStr,
+                ':id_tenant' => $id_tenant,
             ]);
         }
         $conn->exec("SELECT setval('impressoras_id_seq', COALESCE((SELECT MAX(id) FROM impressoras), 0) + 1, false)");
@@ -69,7 +85,13 @@ if ($acao === 'carregar') {
     ob_clean();
     header('Content-Type: application/json');
     try {
-        $rows   = $conn->query("SELECT id, nome, ip, porta, categorias FROM impressoras WHERE ativo = TRUE ORDER BY id")->fetchAll(\PDO::FETCH_ASSOC);
+        if ($is_master) {
+            $rows = $conn->query("SELECT id, nome, ip, porta, categorias FROM impressoras WHERE ativo = TRUE ORDER BY id")->fetchAll(\PDO::FETCH_ASSOC);
+        } else {
+            $stmt = $conn->prepare("SELECT id, nome, ip, porta, categorias FROM impressoras WHERE ativo = TRUE AND id_tenant = ? ORDER BY id");
+            $stmt->execute([$id_tenant]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        }
         $result = array_map(function($r) {
             $raw  = trim($r['categorias'] ?? '{}', '{}');
             $cats = $raw === '' ? [] : array_map(fn($v) => trim($v, '"'), explode(',', $raw));
@@ -89,21 +111,39 @@ if ($acao === 'carregar') {
     exit;
 }
 
-// ── Busca categorias do banco para o JS ──────────────────────
+// ── Busca categorias do banco filtradas por tenant ───────────
 try {
-    $categorias_db = $conn->query("
-        SELECT c.id_categoria, c.nome
-        FROM categorias c
-        INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE
-        GROUP BY c.id_categoria, c.nome
-        ORDER BY c.nome ASC
-    ")->fetchAll(\PDO::FETCH_ASSOC);
+    if ($is_master) {
+        $categorias_db = $conn->query("
+            SELECT c.id_categoria, c.nome
+            FROM categorias c
+            INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE
+            GROUP BY c.id_categoria, c.nome
+            ORDER BY c.nome ASC
+        ")->fetchAll(\PDO::FETCH_ASSOC);
+    } else {
+        $stmt_cat = $conn->prepare("
+            SELECT c.id_categoria, c.nome
+            FROM categorias c
+            INNER JOIN produtos p ON p.id_categoria = c.id_categoria 
+                AND p.ativo = TRUE 
+                AND p.id_tenant = ?
+            GROUP BY c.id_categoria, c.nome
+            ORDER BY c.nome ASC
+        ");
+        $stmt_cat->execute([$id_tenant]);
+        $categorias_db = $stmt_cat->fetchAll(\PDO::FETCH_ASSOC);
+    }
 } catch (\Throwable $e) {
     $categorias_db = [];
 }
 ?>
-
-<?php echo aplicar_tema($conn); ?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Configuração de Impressoras</title>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
