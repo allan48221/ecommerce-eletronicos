@@ -14,8 +14,19 @@ $busca         = trim($_GET['busca'] ?? '');
 if (!in_array($filtro_tipo,   ['todos','online','presencial'])) $filtro_tipo = 'todos';
 if (!in_array($filtro_status, ['todos','pendente','confirmado','aprovado'])) $filtro_status = 'todos';
 
+// ── TENANT ──
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
+
+// ── FILTROS BASE ──
 $where  = "WHERE p.status NOT IN ('cancelado','expirado')";
 $params = [];
+
+// Filtro de tenant (não-master sempre filtra pelo seu tenant)
+if (!$is_master) {
+    $where .= " AND p.id_tenant = ?";
+    $params[] = $id_tenant;
+}
 
 if ($filtro_tipo !== 'todos') {
     $where .= " AND COALESCE(p.tipo,'online') = ?";
@@ -41,14 +52,29 @@ $stmt = $conn->prepare($sql);
 $stmt->execute($params);
 $pedidos = $stmt->fetchAll();
 
-$cnt = $conn->query("
-    SELECT
-        COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado')) AS todos,
-        COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado') AND COALESCE(tipo,'online')='online') AS online,
-        COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado') AND tipo='presencial') AS presencial
-    FROM pedidos
-")->fetch();
+// ── CONTAGENS (também filtradas por tenant) ──
+if ($is_master) {
+    $cnt = $conn->query("
+        SELECT
+            COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado')) AS todos,
+            COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado') AND COALESCE(tipo,'online')='online') AS online,
+            COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado') AND tipo='presencial') AS presencial
+        FROM pedidos
+    ")->fetch();
+} else {
+    $stmt_cnt = $conn->prepare("
+        SELECT
+            COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado')) AS todos,
+            COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado') AND COALESCE(tipo,'online')='online') AS online,
+            COUNT(*) FILTER (WHERE status NOT IN ('cancelado','expirado') AND tipo='presencial') AS presencial
+        FROM pedidos
+        WHERE id_tenant = ?
+    ");
+    $stmt_cnt->execute([$id_tenant]);
+    $cnt = $stmt_cnt->fetch();
+}
 
+// ── ITENS DOS PEDIDOS ──
 $ids = array_column($pedidos, 'id_pedido');
 $itens_map = [];
 if (!empty($ids)) {
