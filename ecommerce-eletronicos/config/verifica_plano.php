@@ -1,11 +1,4 @@
 <?php
-/**
- * verifica_plano.php
- * Bloqueia acesso a telas conforme o plano do tenant.
- * Uso: require_once 'config/verifica_plano.php';
- *      verificar_plano_acesso(['basico']); // só básico passa
- */
-
 function verificar_plano_acesso(array $planos_permitidos, $conn) {
     // Master não tem tenant — deixa passar sempre
     if (empty($_SESSION['id_tenant'])) return;
@@ -25,12 +18,19 @@ function verificar_plano_acesso(array $planos_permitidos, $conn) {
         $stmt->execute([$id_tenant]);
         $plano = $stmt->fetchColumn();
 
-        // Normaliza para minúsculo e sem acento
         $plano_lower = mb_strtolower(trim($plano ?? ''));
         $permitidos  = array_map('mb_strtolower', $planos_permitidos);
 
-        if (!$plano || !in_array($plano_lower, $permitidos)) {
-            // Redireciona para admin com aviso
+        // ← AQUI é onde substitui o in_array
+        $achou = false;
+        foreach ($permitidos as $permit) {
+            if (str_contains($plano_lower, $permit) || str_contains($permit, $plano_lower)) {
+                $achou = true;
+                break;
+            }
+        }
+
+        if (!$plano || !$achou) {
             header('Location: admin.php?acesso_negado=1');
             exit;
         }
