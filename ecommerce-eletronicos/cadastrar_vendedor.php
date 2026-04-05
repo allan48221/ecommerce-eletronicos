@@ -7,6 +7,10 @@ if (!isset($_SESSION['id_admin'])) {
     exit;
 }
 
+// ── TENANT ──
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
+
 $msg  = '';
 $tipo = '';
 
@@ -27,15 +31,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'criar')
         $msg = 'A senha deve ter pelo menos 6 caracteres.';
         $tipo = 'danger';
     } else {
-        $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ?");
-        $chk->execute([$usuario]);
+        // Verifica usuario duplicado dentro do tenant
+        if ($is_master) {
+            $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ?");
+            $chk->execute([$usuario]);
+        } else {
+            $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ? AND id_tenant = ?");
+            $chk->execute([$usuario, $id_tenant]);
+        }
         if ($chk->fetch()) {
             $msg = "Usuario \"$usuario\" ja existe. Escolha outro.";
             $tipo = 'danger';
         } else {
             $hash = password_hash($senha, PASSWORD_DEFAULT);
-            $conn->prepare("INSERT INTO staff (nome, usuario, senha, tipo) VALUES (?, ?, ?, ?)")
-                 ->execute([$nome, $usuario, $hash, $tipo_staff]);
+            $conn->prepare("INSERT INTO staff (nome, usuario, senha, tipo, id_tenant) VALUES (?, ?, ?, ?, ?)")
+                 ->execute([$nome, $usuario, $hash, $tipo_staff, $id_tenant]);
             $labels = ['vendedor'=>'Vendedor','atendente'=>'Atendente','caixa'=>'Caixa','admin'=>'Administrador'];
             $msg  = "<strong>" . htmlspecialchars($nome) . "</strong> cadastrado como <strong>" . $labels[$tipo_staff] . "</strong>!";
             $tipo = 'success';
@@ -47,7 +57,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'criar')
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir') {
     $id = intval($_POST['id_staff'] ?? 0);
     if ($id > 0) {
-        $conn->prepare("DELETE FROM staff WHERE id_staff = ?")->execute([$id]);
+        if ($is_master) {
+            $conn->prepare("DELETE FROM staff WHERE id_staff = ?")->execute([$id]);
+        } else {
+            // Garante que só exclui staff do próprio tenant
+            $conn->prepare("DELETE FROM staff WHERE id_staff = ? AND id_tenant = ?")->execute([$id, $id_tenant]);
+        }
         $msg  = 'Usuario excluido.';
         $tipo = 'success';
     }
@@ -57,7 +72,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'toggle') {
     $id = intval($_POST['id_staff'] ?? 0);
     if ($id > 0) {
-        $conn->prepare("UPDATE staff SET ativo = NOT ativo WHERE id_staff = ?")->execute([$id]);
+        if ($is_master) {
+            $conn->prepare("UPDATE staff SET ativo = NOT ativo WHERE id_staff = ?")->execute([$id]);
+        } else {
+            $conn->prepare("UPDATE staff SET ativo = NOT ativo WHERE id_staff = ? AND id_tenant = ?")->execute([$id, $id_tenant]);
+        }
         $msg  = 'Status atualizado.';
         $tipo = 'success';
     }
@@ -78,8 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
         $msg = 'Nome e usuario sao obrigatorios.';
         $tipo = 'danger';
     } else {
-        $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ? AND id_staff != ?");
-        $chk->execute([$usuario, $id]);
+        // Verifica usuario duplicado dentro do tenant
+        if ($is_master) {
+            $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ? AND id_staff != ?");
+            $chk->execute([$usuario, $id]);
+        } else {
+            $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ? AND id_staff != ? AND id_tenant = ?");
+            $chk->execute([$usuario, $id, $id_tenant]);
+        }
         if ($chk->fetch()) {
             $msg = "Usuario \"$usuario\" ja esta em uso.";
             $tipo = 'danger';
@@ -90,14 +115,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
                     $tipo = 'danger';
                 } else {
                     $hash = password_hash($nova_senha, PASSWORD_DEFAULT);
-                    $conn->prepare("UPDATE staff SET nome=?, usuario=?, senha=?, tipo=? WHERE id_staff=?")
-                         ->execute([$nome, $usuario, $hash, $tipo_staff, $id]);
+                    if ($is_master) {
+                        $conn->prepare("UPDATE staff SET nome=?, usuario=?, senha=?, tipo=? WHERE id_staff=?")
+                             ->execute([$nome, $usuario, $hash, $tipo_staff, $id]);
+                    } else {
+                        $conn->prepare("UPDATE staff SET nome=?, usuario=?, senha=?, tipo=? WHERE id_staff=? AND id_tenant=?")
+                             ->execute([$nome, $usuario, $hash, $tipo_staff, $id, $id_tenant]);
+                    }
                     $msg  = 'Usuario atualizado com nova senha.';
                     $tipo = 'success';
                 }
             } else {
-                $conn->prepare("UPDATE staff SET nome=?, usuario=?, tipo=? WHERE id_staff=?")
-                     ->execute([$nome, $usuario, $tipo_staff, $id]);
+                if ($is_master) {
+                    $conn->prepare("UPDATE staff SET nome=?, usuario=?, tipo=? WHERE id_staff=?")
+                         ->execute([$nome, $usuario, $tipo_staff, $id]);
+                } else {
+                    $conn->prepare("UPDATE staff SET nome=?, usuario=?, tipo=? WHERE id_staff=? AND id_tenant=?")
+                         ->execute([$nome, $usuario, $tipo_staff, $id, $id_tenant]);
+                }
                 $msg  = 'Usuario atualizado.';
                 $tipo = 'success';
             }
@@ -105,8 +140,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
     }
 }
 
-// ── LISTAR ──
-$todos = $conn->query("SELECT * FROM staff ORDER BY tipo ASC, nome ASC")->fetchAll();
+// ── LISTAR (filtrado por tenant) ──
+if ($is_master) {
+    $todos = $conn->query("SELECT * FROM staff ORDER BY tipo ASC, nome ASC")->fetchAll();
+} else {
+    $stmt = $conn->prepare("SELECT * FROM staff WHERE id_tenant = ? ORDER BY tipo ASC, nome ASC");
+    $stmt->execute([$id_tenant]);
+    $todos = $stmt->fetchAll();
+}
 
 $tipo_configs = [
     'vendedor'  => ['label'=>'Vendedor',      'desc'=>'Acessa Venda Presencial',      'cor'=>'#059669', 'bg'=>'#dcfce7'],
