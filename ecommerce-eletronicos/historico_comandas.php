@@ -10,13 +10,22 @@ if (!isset($_SESSION['id_admin']) || !is_numeric($_SESSION['id_admin'])) {
 
 $nome_admin = $_SESSION['nome_admin'] ?? 'Administrador';
 
+// ── TENANT ──
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
+
 // ── AJAX: detalhe de comanda ──────────────────────────────────────
 if (isset($_GET['detalhe_comanda_hist'])) {
     header('Content-Type: application/json');
     $id = intval($_GET['id'] ?? 0);
     try {
-        $sc = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? LIMIT 1");
-        $sc->execute([$id]);
+        if ($is_master) {
+            $sc = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? LIMIT 1");
+            $sc->execute([$id]);
+        } else {
+            $sc = $conn->prepare("SELECT * FROM comandas WHERE id_comanda = ? AND id_tenant = ? LIMIT 1");
+            $sc->execute([$id, $id_tenant]);
+        }
         $comanda = $sc->fetch(PDO::FETCH_ASSOC);
         if (!$comanda) { echo json_encode(null); exit; }
         $si = $conn->prepare("SELECT * FROM comanda_itens WHERE id_comanda = ? ORDER BY criado_em");
@@ -35,8 +44,13 @@ if (isset($_GET['ajax_sessao_hist'])) {
     $id_sessao = intval($_GET['id_sessao'] ?? 0);
     if (!$id_sessao) { echo json_encode(null); exit; }
     try {
-        $s = $conn->prepare("SELECT * FROM caixa_sessoes WHERE id_sessao = ? LIMIT 1");
-        $s->execute([$id_sessao]);
+        if ($is_master) {
+            $s = $conn->prepare("SELECT * FROM caixa_sessoes WHERE id_sessao = ? LIMIT 1");
+            $s->execute([$id_sessao]);
+        } else {
+            $s = $conn->prepare("SELECT * FROM caixa_sessoes WHERE id_sessao = ? AND id_tenant = ? LIMIT 1");
+            $s->execute([$id_sessao, $id_tenant]);
+        }
         $sessao = $s->fetch(PDO::FETCH_ASSOC);
         if (!$sessao) { echo json_encode(null); exit; }
 
@@ -45,10 +59,17 @@ if (isset($_GET['ajax_sessao_hist'])) {
         $sessao['movimentacoes'] = $sm->fetchAll(PDO::FETCH_ASSOC);
 
         $ate = $sessao['fechado_em'] ? "'{$sessao['fechado_em']}'" : "NOW()";
-        $sv = $conn->query("SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate GROUP BY forma_pagamento");
-        $sessao['vendas_por_pagamento'] = $sv->fetchAll(PDO::FETCH_ASSOC);
 
-        $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate");
+        if ($is_master) {
+            $sv = $conn->query("SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate GROUP BY forma_pagamento");
+            $st = $conn->query("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate");
+        } else {
+            $sv = $conn->prepare("SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total FROM pedidos WHERE status = 'aprovado' AND id_tenant = ? AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate GROUP BY forma_pagamento");
+            $sv->execute([$id_tenant]);
+            $st = $conn->prepare("SELECT COUNT(*) AS qtd, COALESCE(SUM(valor_total),0) AS total FROM pedidos WHERE status = 'aprovado' AND id_tenant = ? AND data_pedido >= '{$sessao['aberto_em']}' AND data_pedido <= $ate");
+            $st->execute([$id_tenant]);
+        }
+        $sessao['vendas_por_pagamento'] = $sv->fetchAll(PDO::FETCH_ASSOC);
         $t = $st->fetch(PDO::FETCH_ASSOC);
         $sessao['total_vendido'] = $t['total'];
         $sessao['qtd_pedidos']   = $t['qtd'];
@@ -70,8 +91,9 @@ $hist_status = isset($_GET['hist_status']) && in_array($_GET['hist_status'], [''
 
 $filtro_alterado = ($hist_dia != $hoje_dia || $hist_mes != $hoje_mes || $hist_ano != $hoje_ano || $hist_status !== '');
 
-// ── Query ─────────────────────────────────────────────────────────
+// ── Query comandas ────────────────────────────────────────────────
 $where = ["c.status IN ('fechada','cancelada')"];
+if (!$is_master) $where[] = "c.id_tenant = " . intval($id_tenant);
 if ($hist_dia) $where[] = "EXTRACT(DAY   FROM c.fechado_em AT TIME ZONE 'America/Belem') = $hist_dia";
 if ($hist_mes) $where[] = "EXTRACT(MONTH FROM c.fechado_em AT TIME ZONE 'America/Belem') = $hist_mes";
 if ($hist_ano) $where[] = "EXTRACT(YEAR  FROM c.fechado_em AT TIME ZONE 'America/Belem') = $hist_ano";
@@ -96,6 +118,7 @@ try {
 
 // ── Sessões de caixa filtradas pelo mesmo período ─────────────────
 $sess_where = ['1=1'];
+if (!$is_master) $sess_where[] = "id_tenant = " . intval($id_tenant);
 if ($hist_dia) $sess_where[] = "EXTRACT(DAY   FROM aberto_em AT TIME ZONE 'America/Belem') = $hist_dia";
 if ($hist_mes) $sess_where[] = "EXTRACT(MONTH FROM aberto_em AT TIME ZONE 'America/Belem') = $hist_mes";
 if ($hist_ano) $sess_where[] = "EXTRACT(YEAR  FROM aberto_em AT TIME ZONE 'America/Belem') = $hist_ano";
