@@ -81,10 +81,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
     <div class="mr-hero">
         <h1>&#127859; Modo Restaurante</h1>
         <p>Gerencie comandas, atendimento de mesa e caixa — tudo integrado ao seu estoque.</p>
-        <div class="mr-hero-badge">
-            &#9679; <?= $stats['total'] ?> comanda(s) aberta(s) · R$ <?= number_format($stats['soma'], 2, ',', '.') ?> em aberto
-        </div>
-        <?php endif; ?>
     </div>
 
     <!-- Módulos -->
