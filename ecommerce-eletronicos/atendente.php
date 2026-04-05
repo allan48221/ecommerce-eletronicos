@@ -189,15 +189,28 @@ if (isset($_GET['categoria'])) {
 if (isset($_GET['minhas_comandas'])) {
     header('Content-Type: application/json');
     try {
-        $stmt = $conn->query("
-            SELECT c.id_comanda, c.numero_comanda, c.observacao, c.lancado_por, c.valor_total, c.criado_em,
-                   COUNT(ci.id_item) AS total_itens
-            FROM comandas c
-            LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
-            WHERE c.status = 'aberta'
-            GROUP BY c.id_comanda
-            ORDER BY c.criado_em DESC
-        ");
+        if ($is_master) {
+            $stmt = $conn->query("
+                SELECT c.id_comanda, c.numero_comanda, c.observacao, c.lancado_por, c.valor_total, c.criado_em,
+                       COUNT(ci.id_item) AS total_itens
+                FROM comandas c
+                LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
+                WHERE c.status = 'aberta'
+                GROUP BY c.id_comanda
+                ORDER BY c.criado_em DESC
+            ");
+        } else {
+            $stmt = $conn->prepare("
+                SELECT c.id_comanda, c.numero_comanda, c.observacao, c.lancado_por, c.valor_total, c.criado_em,
+                       COUNT(ci.id_item) AS total_itens
+                FROM comandas c
+                LEFT JOIN comanda_itens ci ON ci.id_comanda = c.id_comanda
+                WHERE c.status = 'aberta' AND c.id_tenant = ?
+                GROUP BY c.id_comanda
+                ORDER BY c.criado_em DESC
+            ");
+            $stmt->execute([$id_tenant]);
+        }
         $comandas = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($comandas as &$cmd) {
             $si = $conn->prepare("SELECT * FROM comanda_itens WHERE id_comanda = ? ORDER BY criado_em");
@@ -304,16 +317,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $total += $sub + $extras;
             }
  
-            $stmt_exist = $conn->prepare("SELECT id_comanda FROM comandas WHERE numero_comanda = ? AND status = 'aberta' LIMIT 1");
-            $stmt_exist->execute([$numero_comanda]);
+            // Busca comanda existente aberta filtrando por tenant
+            if ($is_master) {
+                $stmt_exist = $conn->prepare("SELECT id_comanda FROM comandas WHERE numero_comanda = ? AND status = 'aberta' LIMIT 1");
+                $stmt_exist->execute([$numero_comanda]);
+            } else {
+                $stmt_exist = $conn->prepare("SELECT id_comanda FROM comandas WHERE numero_comanda = ? AND status = 'aberta' AND id_tenant = ? LIMIT 1");
+                $stmt_exist->execute([$numero_comanda, $id_tenant]);
+            }
             $comanda_exist = $stmt_exist->fetch(PDO::FETCH_ASSOC);
  
             if ($comanda_exist) {
                 $id_comanda = $comanda_exist['id_comanda'];
                 $conn->prepare("UPDATE comandas SET valor_total = valor_total + ? WHERE id_comanda = ?")->execute([$total, $id_comanda]);
             } else {
-                $stmt = $conn->prepare("INSERT INTO comandas (numero_comanda, status, observacao, lancado_por, valor_total, criado_em) VALUES (?, 'aberta', ?, ?, ?, NOW()) RETURNING id_comanda");
-                $stmt->execute([$numero_comanda, $observacao_cmd, $nome_lancador, $total]);
+                // INSERT com id_tenant
+                $stmt = $conn->prepare("INSERT INTO comandas (numero_comanda, status, observacao, lancado_por, valor_total, criado_em, id_tenant) VALUES (?, 'aberta', ?, ?, ?, NOW(), ?) RETURNING id_comanda");
+                $stmt->execute([$numero_comanda, $observacao_cmd, $nome_lancador, $total, $id_tenant]);
                 $id_comanda = $stmt->fetch(PDO::FETCH_ASSOC)['id_comanda'];
             }
  
