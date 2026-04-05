@@ -1,5 +1,9 @@
 <?php
 function verificar_plano_acesso(array $planos_permitidos, $conn) {
+    
+    // Sem sessão de admin = cliente comum ou visitante = deixa passar
+    if (empty($_SESSION['id_admin'])) return;
+    
     // Master não tem tenant — deixa passar sempre
     if (empty($_SESSION['id_tenant'])) return;
 
@@ -21,7 +25,6 @@ function verificar_plano_acesso(array $planos_permitidos, $conn) {
         $plano_lower = mb_strtolower(trim($plano ?? ''));
         $permitidos  = array_map('mb_strtolower', $planos_permitidos);
 
-        // ← AQUI é onde substitui o in_array
         $achou = false;
         foreach ($permitidos as $permit) {
             if (str_contains($plano_lower, $permit) || str_contains($permit, $plano_lower)) {
