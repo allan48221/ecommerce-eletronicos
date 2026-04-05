@@ -1,9 +1,8 @@
 <?php
-ob_start(); // DEVE ser a primeira linha do arquivo
+ob_start();
 require_once 'config/database.php';
 require_once 'config/tema.php';
 
-// ── Apenas admin tem acesso ──
 if (!isset($_SESSION['id_admin'])) {
     header('Location: login.php');
     exit;
@@ -13,7 +12,7 @@ if (!isset($_SESSION['id_admin'])) {
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 $is_master = empty($_SESSION['id_tenant']);
 
-// ── Garante que a tabela existe ──────────────────────────────
+// ── Garante coluna id_tenant na tabela ──
 $conn->exec("
     CREATE TABLE IF NOT EXISTS impressoras (
         id            SERIAL PRIMARY KEY,
@@ -27,57 +26,30 @@ $conn->exec("
         atualizado_em TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
 ");
+try { $conn->exec("ALTER TABLE impressoras ADD COLUMN IF NOT EXISTS id_tenant INTEGER"); } catch (\Throwable $e) {}
 
-// Adiciona id_tenant na tabela caso já exista sem a coluna
-try {
-    $conn->exec("ALTER TABLE impressoras ADD COLUMN IF NOT EXISTS id_tenant INTEGER");
-} catch (\Throwable $e) {}
-
-$msg      = '';
-$tipo_msg = '';
-
-// ── AJAX: endpoints JSON ─────────────────────────────────────
 $acao = $_GET['acao'] ?? $_POST['acao'] ?? '';
 
 if ($acao === 'salvar' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     ob_clean();
     header('Content-Type: application/json');
     $body = json_decode(file_get_contents('php://input'), true);
-
-    if (!isset($body['printers'])) {
-        echo json_encode(['success' => false, 'message' => 'Dados invalidos']);
-        exit;
-    }
-
+    if (!isset($body['printers'])) { echo json_encode(['success'=>false,'message'=>'Dados invalidos']); exit; }
     try {
-        // Deleta apenas as impressoras do tenant atual
         if ($is_master) {
             $conn->exec("DELETE FROM impressoras");
         } else {
             $conn->prepare("DELETE FROM impressoras WHERE id_tenant = ?")->execute([$id_tenant]);
         }
-
-        $stmt = $conn->prepare("
-            INSERT INTO impressoras (id, nome, ip, porta, categorias, id_tenant)
-            VALUES (:id, :nome, :ip, :porta, :cats, :id_tenant)
-        ");
+        $stmt = $conn->prepare("INSERT INTO impressoras (id, nome, ip, porta, categorias, id_tenant) VALUES (:id, :nome, :ip, :porta, :cats, :id_tenant)");
         foreach ($body['printers'] as $p) {
             $cats    = $p['cats'] ?? $p['categorias'] ?? [];
             $catsStr = '{' . implode(',', array_map(fn($c) => '"' . addslashes($c) . '"', $cats)) . '}';
-            $stmt->execute([
-                ':id'        => intval($p['id']),
-                ':nome'      => $p['nome']  ?? '',
-                ':ip'        => $p['ip']    ?? '',
-                ':porta'     => $p['porta'] ?? '9100',
-                ':cats'      => $catsStr,
-                ':id_tenant' => $id_tenant,
-            ]);
+            $stmt->execute([':id'=>intval($p['id']),':nome'=>$p['nome']??'',':ip'=>$p['ip']??'',':porta'=>$p['porta']??'9100',':cats'=>$catsStr,':id_tenant'=>$id_tenant]);
         }
         $conn->exec("SELECT setval('impressoras_id_seq', COALESCE((SELECT MAX(id) FROM impressoras), 0) + 1, false)");
-        echo json_encode(['success' => true]);
-    } catch (\Throwable $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-    }
+        echo json_encode(['success'=>true]);
+    } catch (\Throwable $e) { echo json_encode(['success'=>false,'message'=>$e->getMessage()]); }
     exit;
 }
 
@@ -95,48 +67,35 @@ if ($acao === 'carregar') {
         $result = array_map(function($r) {
             $raw  = trim($r['categorias'] ?? '{}', '{}');
             $cats = $raw === '' ? [] : array_map(fn($v) => trim($v, '"'), explode(',', $raw));
-            return [
-                'id'     => intval($r['id']),
-                'nome'   => $r['nome'],
-                'ip'     => $r['ip'],
-                'porta'  => $r['porta'],
-                'cats'   => $cats,
-                'status' => 'offline',
-            ];
+            return ['id'=>intval($r['id']),'nome'=>$r['nome'],'ip'=>$r['ip'],'porta'=>$r['porta'],'cats'=>$cats,'status'=>'offline'];
         }, $rows);
-        echo json_encode(['success' => true, 'data' => $result]);
-    } catch (\Throwable $e) {
-        echo json_encode(['success' => false, 'data' => [], 'message' => $e->getMessage()]);
-    }
+        echo json_encode(['success'=>true,'data'=>$result]);
+    } catch (\Throwable $e) { echo json_encode(['success'=>false,'data'=>[],'message'=>$e->getMessage()]); }
     exit;
 }
 
-// ── Busca categorias do banco filtradas por tenant ───────────
+// ── Categorias filtradas por tenant ──
 try {
     if ($is_master) {
         $categorias_db = $conn->query("
             SELECT c.id_categoria, c.nome
             FROM categorias c
             INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE
-            GROUP BY c.id_categoria, c.nome
-            ORDER BY c.nome ASC
+            GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC
         ")->fetchAll(\PDO::FETCH_ASSOC);
     } else {
         $stmt_cat = $conn->prepare("
             SELECT c.id_categoria, c.nome
             FROM categorias c
-            INNER JOIN produtos p ON p.id_categoria = c.id_categoria 
-                AND p.ativo = TRUE 
-                AND p.id_tenant = ?
-            GROUP BY c.id_categoria, c.nome
-            ORDER BY c.nome ASC
+            INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE AND p.id_tenant = ?
+            GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC
         ");
         $stmt_cat->execute([$id_tenant]);
         $categorias_db = $stmt_cat->fetchAll(\PDO::FETCH_ASSOC);
     }
-} catch (\Throwable $e) {
-    $categorias_db = [];
-}
+} catch (\Throwable $e) { $categorias_db = []; }
+
+$tema = aplicar_tema($conn); // captura o tema para usar no <head>
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -144,6 +103,7 @@ try {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Configuração de Impressoras</title>
+<?= $tema ?>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
