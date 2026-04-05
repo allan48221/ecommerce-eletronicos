@@ -4,6 +4,9 @@ require_once 'config/tema.php';
 require_once 'empresa_helper.php';
 require_once 'config/verifica_plano.php';
 
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$emp = getDadosEmpresa($conn) ?: [];
+
 if (!empty($id_tenant)) {
     verificar_plano_acesso(['basico'], $conn);
 }
@@ -24,7 +27,6 @@ if (isset($_GET['categoria']) && $_GET['categoria'] != 'todos') {
     $categoria_filtro = " AND p.id_categoria = $id_categoria";
 }
 
-// ✅ Queries filtradas por id_tenant
 $stmt_destaques = $conn->prepare("
     SELECT p.*, c.nome as categoria_nome 
     FROM produtos p 
