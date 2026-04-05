@@ -5,6 +5,13 @@ require_once 'empresa_helper.php';
 require_once 'config/verifica_plano.php';
 $emp = getDadosEmpresa($conn);
 verificar_plano_acesso(['basico'], $conn); 
+// DEBUG TEMPORÁRIO - remover depois
+echo '<pre>';
+echo 'id_tenant: ' . ($_SESSION['id_tenant'] ?? 'VAZIO') . "\n";
+echo 'id_admin: '  . ($_SESSION['id_admin']  ?? 'VAZIO') . "\n";
+var_dump($_SESSION);
+echo '</pre>';
+die();
 
 // ✅ Pega o id_tenant da sessão
 $id_tenant = $_SESSION['id_tenant'] ?? null;
