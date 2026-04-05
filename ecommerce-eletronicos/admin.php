@@ -416,7 +416,7 @@ if ($res_cores) {
             <?php endif; ?>
         </div>
 
-        <a href="index.php" class="btn-ver-loja-mobile">Ver Loja</a>
+       <a href="<?= $subdominio_logout ? 'index.php?tenant=' . urlencode($subdominio_logout) : 'index.php' ?>" class="btn-ver-loja-mobile">Ver Loja</a>
 
         <!-- VISITANTES -->
         <div class="visitantes-card">
