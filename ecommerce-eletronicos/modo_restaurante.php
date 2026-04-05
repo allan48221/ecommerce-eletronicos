@@ -7,6 +7,22 @@ if (!isset($_SESSION['id_admin'])) {
     exit;
 }
 
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
+
+// Busca total de comandas abertas (filtrado por tenant)
+try {
+    if ($is_master) {
+        $st = $conn->query("SELECT COUNT(*) AS total FROM comandas WHERE status = 'aberta'");
+    } else {
+        $st = $conn->prepare("SELECT COUNT(*) AS total FROM comandas WHERE status = 'aberta' AND id_tenant = ?");
+        $st->execute([$id_tenant]);
+    }
+    $stats = $st->fetch(PDO::FETCH_ASSOC);
+} catch (\Throwable $e) {
+    $stats = ['total' => 0];
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -93,8 +109,8 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
                 <div class="mr-modulo-desc">Veja as comandas abertas, dê baixa no estoque e feche o pagamento.</div>
             </div>
             <div class="mr-modulo-badge">
-                <?php if ($stats['total'] > 0): ?>
-                    &#128308; <?= $stats['total'] ?> aberta(s)
+                <?php if (!empty($stats['total']) && $stats['total'] > 0): ?>
+                    &#128308; <?= intval($stats['total']) ?> aberta(s)
                 <?php else: ?>
                     &#128994; Sem comandas
                 <?php endif; ?>
