@@ -19,12 +19,17 @@ $tipos_validos = [
 ];
 if (!in_array($filtro_tipo, $tipos_validos)) $filtro_tipo = 'todos';
 
+// ── TENANT ──
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
+
 $logs = [];
 
 // ── PEDIDOS CRIADOS ──
 if (in_array($filtro_tipo, ['todos', 'pedido_criado'])) {
     $where  = "WHERE COALESCE(p.tipo,'online') != 'presencial'";
     $params = [];
+    if (!$is_master) { $where .= " AND p.id_tenant = ?"; $params[] = $id_tenant; }
     if ($filtro_data) { $where .= " AND DATE(p.data_pedido) = ?"; $params[] = $filtro_data; }
     if ($busca) { $where .= " AND (CAST(p.id_pedido AS TEXT) ILIKE ? OR p.nome_cliente ILIKE ?)"; $like = '%'.$busca.'%'; $params[] = $like; $params[] = $like; }
     $stmt = $conn->prepare("SELECT p.id_pedido, p.nome_cliente, p.valor_total, p.forma_pagamento, p.status, p.data_pedido AS momento FROM pedidos p $where ORDER BY p.data_pedido DESC LIMIT 200");
@@ -38,6 +43,7 @@ if (in_array($filtro_tipo, ['todos', 'pedido_criado'])) {
 if (in_array($filtro_tipo, ['todos', 'pedido_confirmado'])) {
     $where  = "WHERE p.status = 'confirmado' AND p.data_acao IS NOT NULL";
     $params = [];
+    if (!$is_master) { $where .= " AND p.id_tenant = ?"; $params[] = $id_tenant; }
     if ($filtro_data) { $where .= " AND DATE(p.data_acao) = ?"; $params[] = $filtro_data; }
     if ($busca) { $where .= " AND (CAST(p.id_pedido AS TEXT) ILIKE ? OR p.nome_cliente ILIKE ?)"; $like = '%'.$busca.'%'; $params[] = $like; $params[] = $like; }
     $stmt = $conn->prepare("SELECT p.id_pedido, p.nome_cliente, p.valor_total, p.forma_pagamento, p.data_acao AS momento FROM pedidos p $where ORDER BY p.data_acao DESC LIMIT 200");
@@ -51,6 +57,7 @@ if (in_array($filtro_tipo, ['todos', 'pedido_confirmado'])) {
 if (in_array($filtro_tipo, ['todos', 'pedido_cancelado'])) {
     $where  = "WHERE 1=1";
     $params = [];
+    if (!$is_master) { $where .= " AND p.id_tenant = ?"; $params[] = $id_tenant; }
     if ($filtro_data) { $where .= " AND DATE(c.data_cancelamento) = ?"; $params[] = $filtro_data; }
     if ($busca) { $where .= " AND (CAST(c.id_pedido AS TEXT) ILIKE ? OR p.nome_cliente ILIKE ? OR c.motivo ILIKE ?)"; $like = '%'.$busca.'%'; $params[] = $like; $params[] = $like; $params[] = $like; }
     $stmt = $conn->prepare("SELECT c.id_pedido, c.motivo, c.data_cancelamento AS momento, p.nome_cliente, p.valor_total, p.forma_pagamento, COALESCE(a1.nome, a2.nome, 'Admin') AS nome_admin FROM cancelamentos c JOIN pedidos p ON p.id_pedido = c.id_pedido LEFT JOIN administradores a1 ON a1.id_admin = c.id_admin LEFT JOIN admins a2 ON a2.id_admin = c.id_admin $where ORDER BY c.data_cancelamento DESC LIMIT 200");
@@ -64,6 +71,7 @@ if (in_array($filtro_tipo, ['todos', 'pedido_cancelado'])) {
 if (in_array($filtro_tipo, ['todos', 'venda_presencial'])) {
     $where  = "WHERE 1=1";
     $params = [];
+    if (!$is_master) { $where .= " AND p.id_tenant = ?"; $params[] = $id_tenant; }
     if ($filtro_data) { $where .= " AND DATE(vp.criado_em) = ?"; $params[] = $filtro_data; }
     if ($busca) { $where .= " AND (CAST(vp.id_pedido AS TEXT) ILIKE ? OR p.nome_cliente ILIKE ? OR pr.nome ILIKE ?)"; $like = '%'.$busca.'%'; $params[] = $like; $params[] = $like; $params[] = $like; }
     $stmt = $conn->prepare("
@@ -81,8 +89,13 @@ if (in_array($filtro_tipo, ['todos', 'venda_presencial'])) {
 
     $nomes_admins     = [];
     $nomes_vendedores = [];
-    try { foreach ($conn->query("SELECT id_admin, nome FROM admins")->fetchAll() as $row) { $nomes_admins[$row['id_admin']] = $row['nome']; } } catch (\Throwable $e) {}
-    try { foreach ($conn->query("SELECT id_vendedor, nome FROM vendedores")->fetchAll() as $row) { $nomes_vendedores[$row['id_vendedor']] = $row['nome']; } } catch (\Throwable $e) {}
+    if ($is_master) {
+        try { foreach ($conn->query("SELECT id_admin, nome FROM admins")->fetchAll() as $row) { $nomes_admins[$row['id_admin']] = $row['nome']; } } catch (\Throwable $e) {}
+        try { foreach ($conn->query("SELECT id_vendedor, nome FROM vendedores")->fetchAll() as $row) { $nomes_vendedores[$row['id_vendedor']] = $row['nome']; } } catch (\Throwable $e) {}
+    } else {
+        try { $r2 = $conn->prepare("SELECT id_admin, nome FROM admins WHERE id_tenant = ?"); $r2->execute([$id_tenant]); foreach ($r2->fetchAll() as $row) { $nomes_admins[$row['id_admin']] = $row['nome']; } } catch (\Throwable $e) {}
+        try { $r2 = $conn->prepare("SELECT id_vendedor, nome FROM vendedores WHERE id_tenant = ?"); $r2->execute([$id_tenant]); foreach ($r2->fetchAll() as $row) { $nomes_vendedores[$row['id_vendedor']] = $row['nome']; } } catch (\Throwable $e) {}
+    }
 
     foreach ($stmt->fetchAll() as $r) {
         $quem = null;
@@ -102,10 +115,10 @@ $tipos_comanda = ['comanda_lancada', 'comanda_fechada', 'comanda_cancelada', 'it
 if ($filtro_tipo === 'todos' || in_array($filtro_tipo, ['comanda_lancada','comanda_fechada','comanda_cancelada'])) {
     $where  = "WHERE 1=1";
     $params = [];
-    if ($filtro_tipo === 'comanda_lancada')  $where .= " AND c.status = 'aberta'";
+    if (!$is_master) { $where .= " AND c.id_tenant = ?"; $params[] = $id_tenant; }
+    if ($filtro_tipo === 'comanda_lancada')       $where .= " AND c.status = 'aberta'";
     elseif ($filtro_tipo === 'comanda_fechada')   $where .= " AND c.status = 'fechada'";
     elseif ($filtro_tipo === 'comanda_cancelada') $where .= " AND c.status = 'cancelada'";
-
     if ($filtro_data) { $where .= " AND DATE(COALESCE(c.fechado_em, c.criado_em)) = ?"; $params[] = $filtro_data; }
     if ($busca) { $where .= " AND (c.numero_comanda ILIKE ? OR c.lancado_por ILIKE ?)"; $like = '%'.$busca.'%'; $params[] = $like; $params[] = $like; }
 
@@ -155,6 +168,7 @@ if ($filtro_tipo === 'todos' || in_array($filtro_tipo, ['comanda_lancada','coman
 if (in_array($filtro_tipo, ['todos', 'comanda_cancelada', 'item_removido'])) {
     $where  = "WHERE 1=1";
     $params = [];
+    if (!$is_master) { $where .= " AND id_tenant = ?"; $params[] = $id_tenant; }
     if ($filtro_data) { $where .= " AND DATE(removido_em) = ?"; $params[] = $filtro_data; }
     if ($busca) { $where .= " AND (numero_comanda ILIKE ? OR nome_produto ILIKE ? OR removido_por ILIKE ?)"; $like = '%'.$busca.'%'; $params[] = $like; $params[] = $like; $params[] = $like; }
     try {
