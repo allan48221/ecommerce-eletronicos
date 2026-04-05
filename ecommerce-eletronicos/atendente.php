@@ -1,7 +1,7 @@
 <?php
 require_once 'config/database.php';
 require_once 'config/tema.php';
-
+ 
 if (isset($_GET['ver_sessao'])) {
     header('Content-Type: application/json');
     echo json_encode(['sessao' => $_SESSION]);
@@ -9,15 +9,17 @@ if (isset($_GET['ver_sessao'])) {
 }
 $tipo_staff = $_SESSION['tipo_staff'] ?? null;
 $is_admin   = isset($_SESSION['id_admin']) && is_numeric($_SESSION['id_admin']);
-
+ 
 if (!$is_admin && $tipo_staff !== 'atendente') {
     header('Location: login.php');
     exit;
 }
-
+ 
 $is_admin    = $is_admin;
 $is_vendedor = false;
-
+$id_tenant   = $_SESSION['id_tenant'] ?? null;
+$is_master   = empty($_SESSION['id_tenant']);
+ 
 // ── ADICIONAIS DO PRODUTO (AJAX) ──
 if (isset($_GET['adicionais'])) {
     header('Content-Type: application/json');
@@ -37,29 +39,51 @@ if (isset($_GET['adicionais'])) {
     }
     exit;
 }
-
+ 
 // ── LISTAR ADICIONAIS AVULSOS (AJAX) ──
 if (isset($_GET['adicionais_avulsos'])) {
     header('Content-Type: application/json');
     $q = trim($_GET['adicionais_avulsos'] ?? '');
     try {
         if ($q !== '') {
-            $stmt = $conn->prepare("
-                SELECT id_adicional, nome, preco
-                FROM adicionais
-                WHERE ativo = TRUE AND nome ILIKE ?
-                ORDER BY nome ASC
-                LIMIT 40
-            ");
-            $stmt->execute(['%' . $q . '%']);
+            if ($is_master) {
+                $stmt = $conn->prepare("
+                    SELECT id_adicional, nome, preco
+                    FROM adicionais
+                    WHERE ativo = TRUE AND nome ILIKE ?
+                    ORDER BY nome ASC
+                    LIMIT 40
+                ");
+                $stmt->execute(['%' . $q . '%']);
+            } else {
+                $stmt = $conn->prepare("
+                    SELECT id_adicional, nome, preco
+                    FROM adicionais
+                    WHERE ativo = TRUE AND nome ILIKE ? AND id_tenant = ?
+                    ORDER BY nome ASC
+                    LIMIT 40
+                ");
+                $stmt->execute(['%' . $q . '%', $id_tenant]);
+            }
         } else {
-            $stmt = $conn->query("
-                SELECT id_adicional, nome, preco
-                FROM adicionais
-                WHERE ativo = TRUE
-                ORDER BY nome ASC
-                LIMIT 40
-            ");
+            if ($is_master) {
+                $stmt = $conn->query("
+                    SELECT id_adicional, nome, preco
+                    FROM adicionais
+                    WHERE ativo = TRUE
+                    ORDER BY nome ASC
+                    LIMIT 40
+                ");
+            } else {
+                $stmt = $conn->prepare("
+                    SELECT id_adicional, nome, preco
+                    FROM adicionais
+                    WHERE ativo = TRUE AND id_tenant = ?
+                    ORDER BY nome ASC
+                    LIMIT 40
+                ");
+                $stmt->execute([$id_tenant]);
+            }
         }
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     } catch (\Throwable $e) {
@@ -67,60 +91,100 @@ if (isset($_GET['adicionais_avulsos'])) {
     }
     exit;
 }
-
+ 
 // ── BUSCA DE PRODUTOS (AJAX) ──
 if (isset($_GET['buscar'])) {
     header('Content-Type: application/json');
     $q = '%' . trim($_GET['buscar']) . '%';
     try {
-        $stmt = $conn->prepare("
-            SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
-                   c.nome AS categoria_nome
-            FROM produtos p
-            LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
-            WHERE p.ativo = TRUE AND p.estoque > 0
-              AND (p.nome ILIKE ? OR p.marca ILIKE ? OR p.modelo ILIKE ?)
-            ORDER BY p.nome ASC
-            LIMIT 20
-        ");
-        $stmt->execute([$q, $q, $q]);
+        if ($is_master) {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p
+                LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0
+                  AND (p.nome ILIKE ? OR p.marca ILIKE ? OR p.modelo ILIKE ?)
+                ORDER BY p.nome ASC
+                LIMIT 20
+            ");
+            $stmt->execute([$q, $q, $q]);
+        } else {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p
+                LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_tenant = ?
+                  AND (p.nome ILIKE ? OR p.marca ILIKE ? OR p.modelo ILIKE ?)
+                ORDER BY p.nome ASC
+                LIMIT 20
+            ");
+            $stmt->execute([$id_tenant, $q, $q, $q]);
+        }
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     } catch (\Throwable $e) {
         echo json_encode([]);
     }
     exit;
 }
-
+ 
 // ── PRODUTOS POR CATEGORIA (AJAX) ──
 if (isset($_GET['categoria'])) {
     header('Content-Type: application/json');
     $id_cat = intval($_GET['categoria']);
     if ($id_cat === 0) {
-        $stmt = $conn->query("
-            SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
-                   c.nome AS categoria_nome
-            FROM produtos p
-            LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
-            WHERE p.ativo = TRUE AND p.estoque > 0
-            ORDER BY p.nome ASC
-            LIMIT 60
-        ");
+        if ($is_master) {
+            $stmt = $conn->query("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p
+                LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0
+                ORDER BY p.nome ASC
+                LIMIT 60
+            ");
+        } else {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p
+                LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_tenant = ?
+                ORDER BY p.nome ASC
+                LIMIT 60
+            ");
+            $stmt->execute([$id_tenant]);
+        }
     } else {
-        $stmt = $conn->prepare("
-            SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
-                   c.nome AS categoria_nome
-            FROM produtos p
-            LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
-            WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_categoria = ?
-            ORDER BY p.nome ASC
-            LIMIT 60
-        ");
-        $stmt->execute([$id_cat]);
+        if ($is_master) {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p
+                LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_categoria = ?
+                ORDER BY p.nome ASC
+                LIMIT 60
+            ");
+            $stmt->execute([$id_cat]);
+        } else {
+            $stmt = $conn->prepare("
+                SELECT p.id_produto, p.nome, p.marca, p.modelo, p.preco, p.preco_promocional, p.estoque, p.imagem,
+                       c.nome AS categoria_nome
+                FROM produtos p
+                LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE AND p.estoque > 0 AND p.id_categoria = ? AND p.id_tenant = ?
+                ORDER BY p.nome ASC
+                LIMIT 60
+            ");
+            $stmt->execute([$id_cat, $id_tenant]);
+        }
     }
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     exit;
 }
-
+ 
 // ── COMANDAS ABERTAS (AJAX) ──
 if (isset($_GET['minhas_comandas'])) {
     header('Content-Type: application/json');
@@ -150,8 +214,8 @@ if (isset($_GET['minhas_comandas'])) {
     }
     exit;
 }
-
-// ── NOME DO USUÁRIO LOGADO ──
+ 
+// ── NOME DO USUARIO LOGADO ──
 $nome_lancador = 'Desconhecido';
 if (isset($_SESSION['id_staff']) && is_numeric($_SESSION['id_staff'])) {
     $nome = $_SESSION['nome_staff'] ?? null;
@@ -176,21 +240,21 @@ if (isset($_SESSION['id_staff']) && is_numeric($_SESSION['id_staff'])) {
 } elseif (isset($_SESSION['nome_admin'])) {
     $nome_lancador = $_SESSION['nome_admin'];
 }
-
+ 
 // ── LANCAR COMANDA (POST) ──
 $msg  = '';
 $tipo = '';
-
+ 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $numero_comanda = trim($_POST['numero_comanda'] ?? '');
     $observacao_cmd = trim($_POST['observacao_cmd'] ?? '');
     $itens_json     = trim($_POST['itens_json']     ?? '[]');
     $itens          = json_decode($itens_json, true);
-
+ 
     $erros = [];
     if (empty($numero_comanda))             $erros[] = 'Informe o numero da comanda.';
     if (empty($itens) || !is_array($itens)) $erros[] = 'Adicione ao menos um produto.';
-
+ 
     $prods_db = [];
     if (empty($erros)) {
         foreach ($itens as $item) {
@@ -217,13 +281,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $prods_db[$item['id_produto']] = $p;
         }
     }
-
+ 
     if (empty($erros)) {
         try {
             $conn->beginTransaction();
             $total = 0;
-
-            // Calcula total
+ 
             foreach ($itens as $item) {
                 if (!empty($item['is_avulso'])) {
                     $key = 'avulso_' . $item['id_adicional_avulso'];
@@ -240,11 +303,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $total += $sub + $extras;
             }
-
+ 
             $stmt_exist = $conn->prepare("SELECT id_comanda FROM comandas WHERE numero_comanda = ? AND status = 'aberta' LIMIT 1");
             $stmt_exist->execute([$numero_comanda]);
             $comanda_exist = $stmt_exist->fetch(PDO::FETCH_ASSOC);
-
+ 
             if ($comanda_exist) {
                 $id_comanda = $comanda_exist['id_comanda'];
                 $conn->prepare("UPDATE comandas SET valor_total = valor_total + ? WHERE id_comanda = ?")->execute([$total, $id_comanda]);
@@ -253,10 +316,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$numero_comanda, $observacao_cmd, $nome_lancador, $total]);
                 $id_comanda = $stmt->fetch(PDO::FETCH_ASSOC)['id_comanda'];
             }
-
-            // Insere itens
+ 
             foreach ($itens as $item) {
-                // ── Avulso ──
                 if (!empty($item['is_avulso'])) {
                     $key = 'avulso_' . $item['id_adicional_avulso'];
                     $p   = $prods_db[$key];
@@ -276,7 +337,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     continue;
                 }
-                // ── Produto normal ──
                 $p = $prods_db[$item['id_produto']];
                 $preco_base = (!empty($p['preco_promocional']) && floatval($p['preco_promocional']) > 0)
                     ? floatval($p['preco_promocional']) : floatval($p['preco']);
@@ -289,44 +349,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->prepare("INSERT INTO comanda_itens (id_comanda, id_produto, nome_produto, preco_unitario, quantidade, subtotal, adicionais, observacao, lancado_por) VALUES (?,?,?,?,?,?,?,?,?)")
                      ->execute([$id_comanda, $item['id_produto'], $p['nome'], $preco_base, $item['quantidade'], $sub + $extras, $adicionais_json, $item['obs'] ?? null, $nome_lancador]);
             }
-
+ 
             $conn->commit();
+ 
             try {
-    require_once 'printer_dispatch.php';
-
-    $stmt_imp = $conn->prepare("
-        SELECT ci.nome_produto, ci.quantidade, ci.observacao,
-        ci.adicionais,      
-        p.id_categoria
-        FROM comanda_itens ci
-        LEFT JOIN produtos p ON p.id_produto = ci.id_produto
-        WHERE ci.id_comanda = ?
-        ORDER BY ci.criado_em
-    ");
-    $stmt_imp->execute([$id_comanda]);
-    $itens_para_imprimir = $stmt_imp->fetchAll(PDO::FETCH_ASSOC);
-
-    $resultados_imp = despacharParaImpressoras(
-        $conn,
-        $id_comanda,
-        $numero_comanda,
-        $observacao_cmd ?: '-',
-        $nome_lancador,
-        $itens_para_imprimir
-    );
-
-    foreach ($resultados_imp as $r) {
-        $status = $r['sucesso'] ? 'OK' : 'FALHA';
-        error_log("Impressão [{$status}] → {$r['impressora']} ({$r['ip']}) — {$r['itens_count']} item(ns)");
-    }
-
-} catch (\Throwable $e) {
-    error_log("Erro ao imprimir comanda #$numero_comanda: " . $e->getMessage());
-}
+                require_once 'printer_dispatch.php';
+                $stmt_imp = $conn->prepare("
+                    SELECT ci.nome_produto, ci.quantidade, ci.observacao,
+                    ci.adicionais,
+                    p.id_categoria
+                    FROM comanda_itens ci
+                    LEFT JOIN produtos p ON p.id_produto = ci.id_produto
+                    WHERE ci.id_comanda = ?
+                    ORDER BY ci.criado_em
+                ");
+                $stmt_imp->execute([$id_comanda]);
+                $itens_para_imprimir = $stmt_imp->fetchAll(PDO::FETCH_ASSOC);
+                $resultados_imp = despacharParaImpressoras(
+                    $conn,
+                    $id_comanda,
+                    $numero_comanda,
+                    $observacao_cmd ?: '-',
+                    $nome_lancador,
+                    $itens_para_imprimir
+                );
+                foreach ($resultados_imp as $r) {
+                    $status = $r['sucesso'] ? 'OK' : 'FALHA';
+                    error_log("Impressao [{$status}] -> {$r['impressora']} ({$r['ip']}) - {$r['itens_count']} item(ns)");
+                }
+            } catch (\Throwable $e) {
+                error_log("Erro ao imprimir comanda #$numero_comanda: " . $e->getMessage());
+            }
+ 
             $acao_log   = $comanda_exist ? 'comanda_atualizada' : 'comanda_lancada';
             $titulo_log = $comanda_exist ? "Comanda #$numero_comanda atualizada pelo atendente" : "Comanda #$numero_comanda lancada";
-            registrar_log($conn, $acao_log, $titulo_log, count($itens).' item(ns) — R$ '.number_format($total,2,',','.'), $total, $id_comanda, $nome_lancador);
-            $msg = "Comanda <strong>#$numero_comanda</strong> ".($comanda_exist?"atualizada":"lancada")."! ".count($itens)." item(ns) adicionados — R$ ".number_format($total,2,',','.');
+            registrar_log($conn, $acao_log, $titulo_log, count($itens).' item(ns) - R$ '.number_format($total,2,',','.'), $total, $id_comanda, $nome_lancador);
+            $msg = "Comanda <strong>#$numero_comanda</strong> ".($comanda_exist?"atualizada":"lancada")."! ".count($itens)." item(ns) adicionados - R$ ".number_format($total,2,',','.');
         } catch (\Throwable $e) {
             $conn->rollBack();
             $msg  = 'Erro: ' . $e->getMessage();
@@ -337,15 +395,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tipo = 'danger';
     }
 }
-
+ 
 // ── CARREGA CATEGORIAS ──
 try {
-    $categorias = $conn->query("
-        SELECT c.id_categoria, c.nome, COUNT(p.id_produto) AS total
-        FROM categorias c
-        INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE AND p.estoque > 0
-        GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC
-    ")->fetchAll();
+    if ($is_master) {
+        $categorias = $conn->query("
+            SELECT c.id_categoria, c.nome, COUNT(p.id_produto) AS total
+            FROM categorias c
+            INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE AND p.estoque > 0
+            GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC
+        ")->fetchAll();
+    } else {
+        $stmt_cat = $conn->prepare("
+            SELECT c.id_categoria, c.nome, COUNT(p.id_produto) AS total
+            FROM categorias c
+            INNER JOIN produtos p ON p.id_categoria = c.id_categoria AND p.ativo = TRUE AND p.estoque > 0
+                AND p.id_tenant = ?
+            GROUP BY c.id_categoria, c.nome ORDER BY c.nome ASC
+        ");
+        $stmt_cat->execute([$id_tenant]);
+        $categorias = $stmt_cat->fetchAll();
+    }
 } catch (\Throwable $e) { $categorias = []; }
 ?>
 <!DOCTYPE html>
