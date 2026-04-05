@@ -1,37 +1,41 @@
 <?php
 require_once 'config/database.php';
 require_once 'config/tema.php';
+
 if (!isset($_SESSION['id_admin'])) {
     header('Location: login.php');
     exit;
 }
 
-// ✅ Pega o id_tenant da sessão
 $id_tenant = $_SESSION['id_tenant'] ?? null;
-$tf = $id_tenant ? "AND id_tenant = $id_tenant" : "";
-$tf_p = $id_tenant ? "AND p.id_tenant = $id_tenant" : "";
-$tf_pd = $id_tenant ? "AND pd.id_tenant = $id_tenant" : "";
 
-// FILTRO DE DATA
 $data_inicio = $_GET['data_inicio'] ?? date('Y-m-01');
 $data_fim    = $_GET['data_fim']    ?? date('Y-m-d');
-
 $di = $data_inicio . ' 00:00:00';
 $df = $data_fim    . ' 23:59:59';
+
+// ✅ Helpers para montar params com tenant
+function params_base($di, $df, $id_tenant) {
+    return $id_tenant ? [$di, $df, $id_tenant] : [$di, $df];
+}
+function tf($alias = '')  {
+    global $id_tenant;
+    $col = $alias ? "$alias.id_tenant" : "id_tenant";
+    return $id_tenant ? "AND $col = ?" : "";
+}
 
 // CARDS DE RESUMO
 $stmt = $conn->prepare("
     SELECT 
-        COALESCE(SUM(valor_total), 0)   AS total_vendido,
-        COUNT(*)                         AS total_pedidos,
-        COALESCE(AVG(valor_total), 0)   AS ticket_medio,
-        COALESCE(SUM(valor_frete), 0)   AS total_frete
+        COALESCE(SUM(valor_total), 0) AS total_vendido,
+        COUNT(*)                       AS total_pedidos,
+        COALESCE(AVG(valor_total), 0) AS ticket_medio,
+        COALESCE(SUM(valor_frete), 0) AS total_frete
     FROM pedidos
     WHERE data_pedido BETWEEN ? AND ?
     AND status != 'cancelado'
-    $tf
-");
-$stmt->execute([$di, $df]);
+    " . tf());
+$stmt->execute(params_base($di, $df, $id_tenant));
 $resumo = $stmt->fetch();
 
 // COMPARATIVO
@@ -41,10 +45,11 @@ $df_ant = date('Y-m-d', strtotime($data_inicio . ' -1 day'))      . ' 23:59:59';
 
 $stmt_ant = $conn->prepare("
     SELECT COALESCE(SUM(valor_total),0) AS total_ant, COUNT(*) AS pedidos_ant
-    FROM pedidos WHERE data_pedido BETWEEN ? AND ?
-    AND status != 'cancelado' $tf
-");
-$stmt_ant->execute([$di_ant, $df_ant]);
+    FROM pedidos
+    WHERE data_pedido BETWEEN ? AND ?
+    AND status != 'cancelado'
+    " . tf());
+$stmt_ant->execute(params_base($di_ant, $df_ant, $id_tenant));
 $anterior = $stmt_ant->fetch();
 
 // FATURAMENTO HOJE
@@ -57,9 +62,9 @@ $stmt_hoje = $conn->prepare("
         COUNT(*) AS pedidos_hoje
     FROM pedidos
     WHERE data_pedido BETWEEN ? AND ?
-    AND status != 'cancelado' $tf
-");
-$stmt_hoje->execute([$hoje_di, $hoje_df]);
+    AND status != 'cancelado'
+    " . tf());
+$stmt_hoje->execute(params_base($hoje_di, $hoje_df, $id_tenant));
 $faturamento_hoje = $stmt_hoje->fetch();
 
 // PRODUTOS MAIS VENDIDOS
@@ -75,32 +80,32 @@ $stmt_prod = $conn->prepare("
     LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
     WHERE pd.data_pedido BETWEEN ? AND ?
     AND pd.status != 'cancelado'
-    $tf_pd
+    " . tf('pd') . "
     GROUP BY ip.id_produto, p.nome, p.imagem, c.nome
     ORDER BY qtd_vendida DESC
     LIMIT 10
 ");
-$stmt_prod->execute([$di, $df]);
+$stmt_prod->execute(params_base($di, $df, $id_tenant));
 $top_produtos = $stmt_prod->fetchAll();
 
 // CATEGORIAS MAIS VENDIDAS
 $stmt_cat = $conn->prepare("
     SELECT 
         COALESCE(c.nome, 'Sem categoria') AS categoria,
-        SUM(ip.quantidade)  AS qtd,
-        SUM(ip.subtotal)    AS receita
+        SUM(ip.quantidade) AS qtd,
+        SUM(ip.subtotal)   AS receita
     FROM itens_pedido ip
     JOIN pedidos pd ON pd.id_pedido = ip.id_pedido
     JOIN produtos p  ON p.id_produto = ip.id_produto
     LEFT JOIN categorias c ON c.id_categoria = p.id_categoria
     WHERE pd.data_pedido BETWEEN ? AND ?
     AND pd.status != 'cancelado'
-    $tf_pd
+    " . tf('pd') . "
     GROUP BY c.id_categoria, c.nome
     ORDER BY receita DESC
     LIMIT 6
 ");
-$stmt_cat->execute([$di, $df]);
+$stmt_cat->execute(params_base($di, $df, $id_tenant));
 $categorias = $stmt_cat->fetchAll();
 
 // ULTIMOS PEDIDOS
@@ -109,11 +114,11 @@ $stmt_ult = $conn->prepare("
            COALESCE(tipo, 'online') AS tipo, data_pedido
     FROM pedidos
     WHERE data_pedido BETWEEN ? AND ?
-    $tf
+    " . tf() . "
     ORDER BY data_pedido DESC
     LIMIT 8
 ");
-$stmt_ult->execute([$di, $df]);
+$stmt_ult->execute(params_base($di, $df, $id_tenant));
 $ultimos_pedidos = $stmt_ult->fetchAll();
 
 // GRAFICO
@@ -121,11 +126,12 @@ $stmt_graf = $conn->prepare("
     SELECT DATE(data_pedido) AS dia, COUNT(*) AS pedidos, SUM(valor_total) AS total
     FROM pedidos
     WHERE data_pedido BETWEEN ? AND ?
-    AND status != 'cancelado' $tf
+    AND status != 'cancelado'
+    " . tf() . "
     GROUP BY DATE(data_pedido)
     ORDER BY dia ASC
 ");
-$stmt_graf->execute([$di, $df]);
+$stmt_graf->execute(params_base($di, $df, $id_tenant));
 $grafico_dados = $stmt_graf->fetchAll();
 
 // FORMAS DE PAGAMENTO
@@ -133,16 +139,21 @@ $stmt_pag = $conn->prepare("
     SELECT forma_pagamento, COUNT(*) AS qtd, SUM(valor_total) AS total
     FROM pedidos
     WHERE data_pedido BETWEEN ? AND ?
-    AND status != 'cancelado' $tf
+    AND status != 'cancelado'
+    " . tf() . "
     GROUP BY forma_pagamento
     ORDER BY qtd DESC
 ");
-$stmt_pag->execute([$di, $df]);
+$stmt_pag->execute(params_base($di, $df, $id_tenant));
 $pagamentos = $stmt_pag->fetchAll();
 
 // CANCELADOS
-$stmt_canc = $conn->prepare("SELECT COUNT(*) FROM pedidos WHERE data_pedido BETWEEN ? AND ? AND status='cancelado' $tf");
-$stmt_canc->execute([$di, $df]);
+$stmt_canc = $conn->prepare("
+    SELECT COUNT(*) FROM pedidos
+    WHERE data_pedido BETWEEN ? AND ?
+    AND status = 'cancelado'
+    " . tf());
+$stmt_canc->execute(params_base($di, $df, $id_tenant));
 $total_cancelados = $stmt_canc->fetchColumn();
 
 // VENDAS POR ATENDENTE
@@ -150,19 +161,19 @@ $stmt_atend = $conn->prepare("
     SELECT 
         ci.lancado_por AS operador,
         COUNT(DISTINCT ci.id_comanda) AS total_comandas,
-        SUM(ci.subtotal) AS total_vendido,
-        COUNT(ci.id_item) AS total_itens
+        SUM(ci.subtotal)              AS total_vendido,
+        COUNT(ci.id_item)             AS total_itens
     FROM comanda_itens ci
     JOIN comandas c ON c.id_comanda = ci.id_comanda
     JOIN pedidos p ON p.observacoes LIKE CONCAT('%Comanda #', c.numero_comanda, '%')
     WHERE p.data_pedido BETWEEN ? AND ?
     AND p.status != 'cancelado'
-    $tf_p
+    " . tf('p') . "
     AND ci.lancado_por IS NOT NULL
     GROUP BY ci.lancado_por
     ORDER BY total_vendido DESC
 ");
-$stmt_atend->execute([$di, $df]);
+$stmt_atend->execute(params_base($di, $df, $id_tenant));
 $vendas_atendentes = $stmt_atend->fetchAll();
 
 // PRODUTOS POR ATENDENTE
@@ -171,22 +182,21 @@ $stmt_atend_prods = $conn->prepare("
         ci.lancado_por AS operador,
         ci.nome_produto,
         SUM(ci.quantidade) AS qtd,
-        SUM(ci.subtotal) AS total
+        SUM(ci.subtotal)   AS total
     FROM comanda_itens ci
     JOIN comandas c ON c.id_comanda = ci.id_comanda
     JOIN pedidos p ON p.observacoes LIKE CONCAT('%Comanda #', c.numero_comanda, '%')
     WHERE p.data_pedido BETWEEN ? AND ?
     AND p.status != 'cancelado'
-    $tf_p
+    " . tf('p') . "
     AND ci.lancado_por IS NOT NULL
     GROUP BY ci.lancado_por, ci.nome_produto
     ORDER BY ci.lancado_por, qtd DESC
 ");
-$stmt_atend_prods->execute([$di, $df]);
+$stmt_atend_prods->execute(params_base($di, $df, $id_tenant));
 $prods_por_atendente = [];
 foreach ($stmt_atend_prods->fetchAll() as $row) {
-    $op = $row['operador'];
-    $prods_por_atendente[$op][] = $row;
+    $prods_por_atendente[$row['operador']][] = $row;
 }
 
 function variacao($atual, $anterior) {
