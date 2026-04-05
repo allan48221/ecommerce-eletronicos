@@ -3,18 +3,12 @@ require_once 'config/database.php';
 require_once 'config/tema.php';
 require_once 'empresa_helper.php';
 require_once 'config/verifica_plano.php';
-$emp = getDadosEmpresa($conn);
-verificar_plano_acesso(['basico'], $conn); 
-// DEBUG TEMPORÁRIO - remover depois
-echo '<pre>';
-echo 'id_tenant: ' . ($_SESSION['id_tenant'] ?? 'VAZIO') . "\n";
-echo 'id_admin: '  . ($_SESSION['id_admin']  ?? 'VAZIO') . "\n";
-var_dump($_SESSION);
-echo '</pre>';
-die();
 
-// ✅ Pega o id_tenant da sessão
+// ✅ Pega o id_tenant ANTES de verificar
 $id_tenant = $_SESSION['id_tenant'] ?? null;
+$emp = getDadosEmpresa($conn);
+
+verificar_plano_acesso(['basico'], $conn);
 
 if (!isset($_SESSION['carrinho'])) {
     $_SESSION['carrinho'] = [];
