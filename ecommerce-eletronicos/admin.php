@@ -32,7 +32,11 @@ $url_saida = $subdominio_logout
 // Verifica se o plano tem acesso a loja
 $plano_admin  = mb_strtolower($_SESSION['plano_nome'] ?? '');
 // ✅ Correto:
-$tem_loja = empty($id_tenant) || str_contains($plano_admin, 'basico');
+$plano_admin = mb_strtolower($_SESSION['plano_nome'] ?? '');
+$tem_loja = empty($id_tenant) || (
+    !str_contains($plano_admin, 'enterprise') && 
+    !str_contains($plano_admin, 'pro')
+);
 $url_ver_loja = $subdominio_logout ? 'index.php?tenant=' . urlencode($subdominio_logout) : 'index.php';
 
 if ($is_master) {
