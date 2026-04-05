@@ -8,6 +8,7 @@ if (!isset($_SESSION['id_admin'])) {
 }
 
 $id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
 
 $conn->exec("
     CREATE TABLE IF NOT EXISTS adicionais (
@@ -42,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'criar')
     if ($nome === '') {
         $msg = 'Informe o nome do adicional.'; $tipo = 'erro';
     } else {
-        // ✅ INSERT com id_tenant
         $conn->prepare("INSERT INTO adicionais (nome, preco, id_tenant) VALUES (?, ?, ?)")->execute([$nome, $preco, $id_tenant]);
         $msg = 'Adicional criado com sucesso.'; $tipo = 'ok';
     }
@@ -53,7 +53,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
     $nome  = trim($_POST['nome'] ?? '');
     $preco = floatval(str_replace(',', '.', $_POST['preco'] ?? '0'));
     if ($id_a > 0 && $nome !== '') {
-        // ✅ UPDATE filtrado por tenant
         $conn->prepare("UPDATE adicionais SET nome=?, preco=? WHERE id_adicional=? AND (id_tenant=? OR id_tenant IS NULL)")->execute([$nome, $preco, $id_a, $id_tenant]);
         $msg = 'Adicional atualizado.'; $tipo = 'ok';
     }
@@ -97,18 +96,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'vincula
     }
 }
 
-// ✅ SELECTs filtrados por tenant
+// Adicionais filtrados por tenant
 $stmt_ad = $conn->prepare("SELECT * FROM adicionais WHERE (id_tenant = ? OR id_tenant IS NULL) ORDER BY criado_em DESC");
 $stmt_ad->execute([$id_tenant]);
 $adicionais = $stmt_ad->fetchAll();
 
+// Produtos filtrados por tenant
 $stmt_pr = $conn->prepare("SELECT id_produto, nome FROM produtos WHERE ativo=TRUE AND (id_tenant = ? OR id_tenant IS NULL) ORDER BY nome");
 $stmt_pr->execute([$id_tenant]);
 $produtos = $stmt_pr->fetchAll();
 
+// Vínculos filtrados: só busca produto_adicionais cujos adicionais pertencem ao tenant
 $vinculos = [];
 try {
-    $rows = $conn->query("SELECT id_produto, id_adicional FROM produto_adicionais")->fetchAll();
+    if ($is_master) {
+        $rows = $conn->query("
+            SELECT pa.id_produto, pa.id_adicional
+            FROM produto_adicionais pa
+            JOIN adicionais a ON a.id_adicional = pa.id_adicional
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmt_v = $conn->prepare("
+            SELECT pa.id_produto, pa.id_adicional
+            FROM produto_adicionais pa
+            JOIN adicionais a ON a.id_adicional = pa.id_adicional
+            WHERE a.id_tenant = ? OR a.id_tenant IS NULL
+        ");
+        $stmt_v->execute([$id_tenant]);
+        $rows = $stmt_v->fetchAll(PDO::FETCH_ASSOC);
+    }
     foreach ($rows as $r) {
         $vinculos[$r['id_produto']][] = $r['id_adicional'];
     }
