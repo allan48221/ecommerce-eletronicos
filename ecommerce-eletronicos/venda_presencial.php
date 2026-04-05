@@ -4,11 +4,14 @@ require_once 'config/tema.php';
 require_once 'empresa_helper.php';
 $emp = getDadosEmpresa($conn);
 
-
 $is_vendedor = !empty($_SESSION['is_vendedor']) && isset($_SESSION['id_vendedor']);
 $is_admin    = isset($_SESSION['id_admin']) && !$is_vendedor;
 
 if (!$is_admin && !$is_vendedor) { header('Location: login.php'); exit; }
+
+// ── TENANT ──
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+$is_master = empty($_SESSION['id_tenant']);
 
 $msg  = '';
 $tipo = '';
@@ -18,9 +21,16 @@ if (isset($_GET['buscar'])) {
     header('Content-Type: application/json');
     $termo = trim($_GET['buscar']);
     if (empty($termo)) { echo json_encode([]); exit; }
-    $stmt = $conn->prepare("SELECT id_produto, nome, marca, modelo, preco, estoque, imagem FROM produtos WHERE ativo=TRUE AND estoque>0 AND (nome ILIKE ? OR marca ILIKE ? OR modelo ILIKE ?) LIMIT 8");
-    $like = '%'.$termo.'%';
-    $stmt->execute([$like, $like, $like]);
+
+    if ($is_master) {
+        $stmt = $conn->prepare("SELECT id_produto, nome, marca, modelo, preco, estoque, imagem FROM produtos WHERE ativo=TRUE AND estoque>0 AND (nome ILIKE ? OR marca ILIKE ? OR modelo ILIKE ?) LIMIT 8");
+        $like = '%'.$termo.'%';
+        $stmt->execute([$like, $like, $like]);
+    } else {
+        $stmt = $conn->prepare("SELECT id_produto, nome, marca, modelo, preco, estoque, imagem FROM produtos WHERE ativo=TRUE AND estoque>0 AND id_tenant=? AND (nome ILIKE ? OR marca ILIKE ? OR modelo ILIKE ?) LIMIT 8");
+        $like = '%'.$termo.'%';
+        $stmt->execute([$id_tenant, $like, $like, $like]);
+    }
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
     exit;
 }
@@ -30,8 +40,14 @@ if (isset($_GET['barcode'])) {
     header('Content-Type: application/json');
     $codigo = trim($_GET['barcode']);
     if (empty($codigo)) { echo json_encode(null); exit; }
-    $stmt = $conn->prepare("SELECT id_produto, nome, marca, modelo, preco, estoque, imagem FROM produtos WHERE ativo=TRUE AND estoque>0 AND codigo_barras = ? LIMIT 1");
-    $stmt->execute([$codigo]);
+
+    if ($is_master) {
+        $stmt = $conn->prepare("SELECT id_produto, nome, marca, modelo, preco, estoque, imagem FROM produtos WHERE ativo=TRUE AND estoque>0 AND codigo_barras = ? LIMIT 1");
+        $stmt->execute([$codigo]);
+    } else {
+        $stmt = $conn->prepare("SELECT id_produto, nome, marca, modelo, preco, estoque, imagem FROM produtos WHERE ativo=TRUE AND estoque>0 AND id_tenant=? AND codigo_barras = ? LIMIT 1");
+        $stmt->execute([$id_tenant, $codigo]);
+    }
     echo json_encode($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
     exit;
 }
@@ -53,8 +69,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $prods_db = [];
     if (empty($erros)) {
         foreach ($itens as $item) {
-            $r = $conn->prepare("SELECT nome, preco, estoque FROM produtos WHERE id_produto=?");
-            $r->execute([$item['id_produto']]);
+            if ($is_master) {
+                $r = $conn->prepare("SELECT nome, preco, estoque FROM produtos WHERE id_produto=?");
+                $r->execute([$item['id_produto']]);
+            } else {
+                $r = $conn->prepare("SELECT nome, preco, estoque FROM produtos WHERE id_produto=? AND id_tenant=?");
+                $r->execute([$item['id_produto'], $id_tenant]);
+            }
             $p = $r->fetch();
             if (!$p) { $erros[] = "Produto ID {$item['id_produto']} não encontrado."; break; }
             if ($p['estoque'] < $item['quantidade']) { $erros[] = "Estoque insuficiente para \"{$p['nome']}\"."; break; }
@@ -67,15 +88,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($itens as $item) $subtotal_total += $prods_db[$item['id_produto']]['preco'] * $item['quantidade'];
         try {
             $conn->beginTransaction();
-            $stmt_pedido = $conn->prepare("INSERT INTO pedidos (nome_cliente,cpf_cliente,telefone_cliente,forma_pagamento,valor_produtos,valor_total,valor_frete,status,observacoes,data_pedido,tipo) VALUES (?,?,?,?,?,?,0,'aprovado',?,NOW(),'presencial')");
-            $stmt_pedido->execute(['Cliente Balcao',$cpf,'',$forma_pagamento,$subtotal_total,$subtotal_total,$observacao?:'Venda presencial']);
+
+            $stmt_pedido = $conn->prepare("INSERT INTO pedidos (nome_cliente,cpf_cliente,telefone_cliente,forma_pagamento,valor_produtos,valor_total,valor_frete,status,observacoes,data_pedido,tipo,id_tenant) VALUES (?,?,?,?,?,?,0,'aprovado',?,NOW(),'presencial',?)");
+            $stmt_pedido->execute(['Cliente Balcao',$cpf,'',$forma_pagamento,$subtotal_total,$subtotal_total,$observacao?:'Venda presencial',$id_tenant]);
             $id_pedido = $conn->lastInsertId();
+
             $itens_comprovante = [];
             foreach ($itens as $item) {
                 $p   = $prods_db[$item['id_produto']];
                 $sub = $p['preco'] * $item['quantidade'];
                 $conn->prepare("INSERT INTO itens_pedido (id_pedido,id_produto,nome_produto,quantidade,preco_unitario,subtotal) VALUES (?,?,?,?,?,?)")->execute([$id_pedido,$item['id_produto'],$p['nome'],$item['quantidade'],$p['preco'],$sub]);
-                $conn->prepare("UPDATE produtos SET estoque=estoque-? WHERE id_produto=?")->execute([$item['quantidade'],$item['id_produto']]);
+                $conn->prepare("UPDATE produtos SET estoque=estoque-? WHERE id_produto=? AND id_tenant=?")->execute([$item['quantidade'],$item['id_produto'],$id_tenant]);
                 try {
                     if ($is_vendedor) $conn->prepare("INSERT INTO vendas_presenciais (id_pedido,id_produto,quantidade,id_vendedor,criado_em) VALUES (?,?,?,?,NOW())")->execute([$id_pedido,$item['id_produto'],$item['quantidade'],$_SESSION['id_vendedor']]);
                     else              $conn->prepare("INSERT INTO vendas_presenciais (id_pedido,id_produto,quantidade,id_admin,criado_em) VALUES (?,?,?,?,NOW())")->execute([$id_pedido,$item['id_produto'],$item['quantidade'],$_SESSION['id_admin']]);
