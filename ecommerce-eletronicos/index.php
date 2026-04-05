@@ -2,13 +2,17 @@
 require_once 'config/database.php';
 require_once 'config/tema.php';
 require_once 'empresa_helper.php';
-require_once 'config/verifica_plano.php';
 
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 $emp = getDadosEmpresa($conn) ?: [];
 
+// Bloqueia planos Enterprise e Pro de acessar a loja
 if (!empty($id_tenant)) {
-    verificar_plano_acesso(['basico'], $conn);
+    $plano = mb_strtolower($_SESSION['plano_nome'] ?? '');
+    if (str_contains($plano, 'enterprise') || str_contains($plano, 'pro')) {
+        header('Location: admin.php?acesso_negado=1');
+        exit;
+    }
 }
 
 if (!isset($_SESSION['carrinho'])) {
@@ -26,7 +30,6 @@ if (isset($_GET['categoria']) && $_GET['categoria'] != 'todos') {
     $id_categoria = intval($_GET['categoria']);
     $categoria_filtro = " AND p.id_categoria = $id_categoria";
 }
-
 $stmt_destaques = $conn->prepare("
     SELECT p.*, c.nome as categoria_nome 
     FROM produtos p 
