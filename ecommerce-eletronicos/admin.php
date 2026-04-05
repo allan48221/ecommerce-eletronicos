@@ -388,7 +388,7 @@ if ($res_cores) {
         <div class="container">
             <a href="index.php" class="logo"></a>
             <nav><ul>
-                <li><a href="index.php">Ver Loja</a></li>
+                <li><a href="<?= $subdominio_logout ? 'index.php?tenant=' . urlencode($subdominio_logout) : 'index.php' ?>">Ver Loja</a></li>
                 <li><a href="<?= $url_saida ?>" class="btn-carrinho" style="background:var(--danger)">Sair</a></li>
             </ul></nav>
         </div>
