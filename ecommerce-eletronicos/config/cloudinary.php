@@ -13,13 +13,10 @@ function cloudinary_upload(string $file_path, string $pasta = 'produtos'): strin
     $timestamp  = time();
     $public_id  = $pasta . '/' . uniqid() . '_' . $timestamp;
 
-    $params_to_sign = [
-        'public_id' => $public_id,
-        'timestamp' => $timestamp,
-    ];
-    ksort($params_to_sign);
-    $query_string = http_build_query($params_to_sign);
-    $signature    = sha1($query_string . CLOUDINARY_API_SECRET);
+    // Monta a string de assinatura MANUALMENTE (sem http_build_query)
+    // Ordem alfabetica dos parametros e obrigatoria
+    $string_to_sign = 'public_id=' . $public_id . '&timestamp=' . $timestamp . CLOUDINARY_API_SECRET;
+    $signature      = sha1($string_to_sign);
 
     $url = 'https://api.cloudinary.com/v1_1/' . CLOUDINARY_CLOUD_NAME . '/image/upload';
 
