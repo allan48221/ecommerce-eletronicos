@@ -1,6 +1,7 @@
 <?php
 require_once 'config/database.php';
 require_once 'config/tema.php';
+require_once 'config/cloudinary.php';
 
 if (!isset($_SESSION['id_admin'])) {
     header('Location: login.php');
@@ -11,10 +12,6 @@ $id_tenant = $_SESSION['id_tenant'] ?? null;
 
 $mensagem      = '';
 $tipo_mensagem = '';
-
-if (!file_exists('uploads')) {
-    mkdir('uploads', 0777, true);
-}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -51,14 +48,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $mensagem = "Imagem muito grande: " . htmlspecialchars($_FILES['imagens']['name'][$key]) . ". Max 5MB.";
                         $tipo_mensagem = "danger"; break;
                     }
-                    $novo_nome = uniqid() . '_' . time() . '.' . $extensao;
-                    $destino   = 'uploads/' . $novo_nome;
-                    if (move_uploaded_file($tmp_name, $destino)) {
-                        $imagens_salvas[] = $novo_nome;
-                    } else {
-                        $mensagem = "Erro ao salvar imagem: " . htmlspecialchars($_FILES['imagens']['name'][$key]);
+
+                    // ── Faz upload para o Cloudinary ──
+                    try {
+                        $url_cloudinary = cloudinary_upload($tmp_name, 'produtos');
+                        $imagens_salvas[] = $url_cloudinary;
+                    } catch (Exception $e) {
+                        $mensagem = "Erro ao enviar imagem para o Cloudinary: " . $e->getMessage();
                         $tipo_mensagem = "danger"; break;
                     }
+
                 } elseif ($_FILES['imagens']['error'][$key] !== UPLOAD_ERR_NO_FILE) {
                     $mensagem = "Erro no upload da imagem " . ($key + 1);
                     $tipo_mensagem = "danger"; break;
@@ -70,7 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($mensagem)) {
         $imagem_principal = !empty($imagens_salvas) ? $imagens_salvas[0] : null;
 
-        // ✅ INSERT com id_tenant
         $sql  = "INSERT INTO produtos (nome, descricao, marca, modelo, preco, preco_promocional, estoque, id_categoria, imagem, destaque, codigo_barras, id_tenant)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id_produto";
         $stmt = $conn->prepare($sql);
@@ -86,10 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id_produto = $row['id_produto'];
 
                 $erros_imagem = [];
-                foreach ($imagens_salvas as $img) {
+                foreach ($imagens_salvas as $url_img) {
                     $stmt_img = $conn->prepare("INSERT INTO produto_imagens (id_produto, imagem) VALUES (?, ?)");
-                    if (!$stmt_img || !$stmt_img->execute([$id_produto, $img])) {
-                        $erros_imagem[] = $img;
+                    if (!$stmt_img || !$stmt_img->execute([$id_produto, $url_img])) {
+                        $erros_imagem[] = $url_img;
                     }
                 }
 
@@ -103,7 +101,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ✅ SELECT categorias filtrado por tenant
 $result_categorias = $conn->prepare("SELECT * FROM categorias WHERE ativo = TRUE AND (id_tenant = ? OR id_tenant IS NULL) ORDER BY nome");
 $result_categorias->execute([$id_tenant]);
 $categorias = $result_categorias->fetchAll(PDO::FETCH_ASSOC);
