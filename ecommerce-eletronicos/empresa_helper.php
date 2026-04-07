@@ -5,10 +5,14 @@
  * Uso: require_once 'empresa_helper.php';
  * Depois use: $emp['cnpj'], $emp['nome_empresa'], etc.
  */
-
 function getDadosEmpresa(PDO $conn): array {
+    $id_tenant = $_SESSION['id_tenant'] ?? null;
+
     try {
-        $r = $conn->query("SELECT * FROM empresa LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $stmt = $conn->prepare("SELECT * FROM empresa WHERE id_tenant = ? LIMIT 1");
+        $stmt->execute([$id_tenant]);
+        $r = $stmt->fetch(PDO::FETCH_ASSOC);
+
         if ($r) {
             // Formata CNPJ: 00.000.000/0001-00
             if (!empty($r['cnpj']) && strlen($r['cnpj']) === 14) {
@@ -22,12 +26,12 @@ function getDadosEmpresa(PDO $conn): array {
             }
             // Endereço completo
             $partes = array_filter([
-                $r['endereco']   ?? '',
-                $r['numero']     ? 'nº ' . $r['numero'] : '',
-                $r['complemento']?? '',
-                $r['bairro']     ?? '',
-                $r['cidade']     ?? '',
-                $r['uf']         ?? '',
+                $r['endereco']    ?? '',
+                $r['numero']      ? 'nº ' . $r['numero'] : '',
+                $r['complemento'] ?? '',
+                $r['bairro']      ?? '',
+                $r['cidade']      ?? '',
+                $r['uf']          ?? '',
             ]);
             $r['endereco_completo'] = implode(', ', $partes);
             return $r;
@@ -36,22 +40,28 @@ function getDadosEmpresa(PDO $conn): array {
 
     // Retorna array vazio com todas as chaves para não quebrar o código
     return [
-        'nome_empresa'     => '',
-        'nome_fantasia'    => '',
-        'cnpj'             => '',
-        'cnpj_formatado'   => '',
-        'telefone'         => '',
-        'celular'          => '',
-        'email'            => '',
-        'nome_responsavel' => '',
-        'cep'              => '',
-        'endereco'         => '',
-        'numero'           => '',
-        'complemento'      => '',
-        'bairro'           => '',
-        'cidade'           => '',
-        'uf'               => '',
-        'site'             => '',
-        'endereco_completo'=> '',
+        'nome_empresa'      => '',
+        'nome_fantasia'     => '',
+        'cnpj'              => '',
+        'cnpj_formatado'    => '',
+        'telefone'          => '',
+        'celular'           => '',
+        'email'             => '',
+        'nome_responsavel'  => '',
+        'cep'               => '',
+        'endereco'          => '',
+        'numero'            => '',
+        'complemento'       => '',
+        'bairro'            => '',
+        'cidade'            => '',
+        'uf'                => '',
+        'site'              => '',
+        'instagram'         => '',
+        'whatsapp'          => '',
+        'horario_atendimento' => '',
+        'formas_pagamento'  => '',
+        'descricao_loja'    => '',
+        'logo'              => '',
+        'endereco_completo' => '',
     ];
 }
