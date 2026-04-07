@@ -517,7 +517,7 @@ $tem_adicionais = !empty($adicionais_produto);
                         <?php endif; ?>
 
                         <img id="img-principal"
-                             src="uploads/<?= htmlspecialchars($imagens[0]) ?>"
+                             src="<?= img_src($imagens[0]) ?>"
                              alt="<?= htmlspecialchars($produto['nome']) ?>"
                              class="produto-detalhe-img"
                              onerror="this.src='uploads/placeholder.jpg'">
@@ -530,7 +530,7 @@ $tem_adicionais = !empty($adicionais_produto);
                     <?php if (count($imagens) > 1): ?>
                         <div class="galeria-thumbs">
                             <?php foreach ($imagens as $i => $img): ?>
-                                <img src="uploads/<?= htmlspecialchars($img) ?>"
+                                <img src="<?= img_src($img) ?>"
                                      alt="Foto <?= $i + 1 ?>"
                                      class="galeria-thumb <?= $i === 0 ? 'ativa' : '' ?>"
                                      onclick="irParaImagem(<?= $i ?>)"
@@ -643,7 +643,7 @@ $tem_adicionais = !empty($adicionais_produto);
             var imgPrincipal = document.getElementById('img-principal');
             imgPrincipal.style.opacity = '0';
             setTimeout(function() {
-                imgPrincipal.src = 'uploads/' + imagens[indiceAtual];
+                imgPrincipal.src = imagens[indiceAtual].startsWith('http') ? imagens[indiceAtual] : 'uploads/' + imagens[indiceAtual];
                 imgPrincipal.style.opacity = '1';
             }, 150);
             document.querySelectorAll('.galeria-thumb').forEach(function(t, i) {
