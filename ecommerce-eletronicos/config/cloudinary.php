@@ -1,24 +1,13 @@
 <?php
 // Credenciais do Cloudinary — pegue em https://console.cloudinary.com
-define('CLOUDINARY_CLOUD_NAME', 'dbmhzqykt');
-define('CLOUDINARY_API_KEY',    '767492381377124');
-define('CLOUDINARY_API_SECRET', '<your_api_secret>');
+define('CLOUDINARY_CLOUD_NAME',    'dbmhzqykt');
+define('CLOUDINARY_UPLOAD_PRESET', 'hwtwawgg'); // nome do preset unsigned criado no painel
 
+/**
+ * Upload sem assinatura (unsigned) — mais simples e sem risco de erro de assinatura.
+ * Requer um Upload Preset do tipo "Unsigned" criado no painel do Cloudinary.
+ */
 function cloudinary_upload(string $file_path, string $pasta = 'produtos'): string {
-    $timestamp = time();
-
-    // SEM barra no public_id — pasta vai no parametro "folder"
-    $public_id = uniqid() . '_' . $timestamp;
-
-    // Assinatura: parametros em ordem ALFABETICA, separados por &
-    // folder vem antes de public_id que vem antes de timestamp
-    $string_to_sign = 'folder=' . $pasta
-                    . '&public_id=' . $public_id
-                    . '&timestamp=' . $timestamp
-                    . CLOUDINARY_API_SECRET;
-
-    $signature = sha1($string_to_sign);
-
     $url = 'https://api.cloudinary.com/v1_1/' . CLOUDINARY_CLOUD_NAME . '/image/upload';
 
     $ch = curl_init();
@@ -27,12 +16,9 @@ function cloudinary_upload(string $file_path, string $pasta = 'produtos'): strin
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => [
-            'file'       => new CURLFile($file_path),
-            'api_key'    => CLOUDINARY_API_KEY,
-            'timestamp'  => $timestamp,
-            'public_id'  => $public_id,
-            'folder'     => $pasta,
-            'signature'  => $signature,
+            'file'          => new CURLFile($file_path),
+            'upload_preset' => CLOUDINARY_UPLOAD_PRESET,
+            'folder'        => $pasta,
         ],
         CURLOPT_TIMEOUT        => 30,
     ]);
