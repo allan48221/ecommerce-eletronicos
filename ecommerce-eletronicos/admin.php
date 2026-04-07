@@ -420,28 +420,30 @@ if ($res_cores) {
             </div>
         </div>
 
-        <div class="card">
-            <h2 class="card-title">Top 3 Mais Vistos</h2>
-            <?php
-            $top_lista = $mais_vistos ? $mais_vistos->fetchAll() : [];
-            if (!empty($top_lista)): ?>
-            <div class="top-produtos-grid">
-                <?php $rank = 1; foreach ($top_lista as $p): ?>
-                <div class="top-produto-card">
-                    <?php if (!empty($p['imagem'])): ?>
-                       <img src="<?= img_src($p['imagem']) ?>" alt="<?= htmlspecialchars($p['nome']) ?>">
-                    <?php else: ?>
-                        <div style="width:60px;height:60px;background:#f1f5f9;border-radius:0.5rem;margin:0.5rem auto;display:flex;align-items:center;justify-content:center;font-size:1.5rem">-</div>
-                    <?php endif; ?>
-                    <div class="prod-nome"><?= htmlspecialchars($p['nome']) ?></div>
-                    <div class="prod-views"><span><?= number_format($p['total_views']) ?></span> views</div>
-                </div>
-                <?php $rank++; endforeach; ?>
-            </div>
+       <?php if (in_array($plano_atual, ['basico'])): ?>
+<div class="card">
+    <h2 class="card-title">Top 3 Mais Vistos</h2>
+    <?php
+    $top_lista = $mais_vistos ? $mais_vistos->fetchAll() : [];
+    if (!empty($top_lista)): ?>
+    <div class="top-produtos-grid">
+        <?php $rank = 1; foreach ($top_lista as $p): ?>
+        <div class="top-produto-card">
+            <?php if (!empty($p['imagem'])): ?>
+               <img src="<?= img_src($p['imagem']) ?>" alt="<?= htmlspecialchars($p['nome']) ?>">
             <?php else: ?>
-                <p style="color:var(--gray);text-align:center;padding:1.5rem 0;font-size:0.85rem">Nenhum dado ainda.</p>
+                <div style="width:60px;height:60px;background:#f1f5f9;border-radius:0.5rem;margin:0.5rem auto;display:flex;align-items:center;justify-content:center;font-size:1.5rem">-</div>
             <?php endif; ?>
+            <div class="prod-nome"><?= htmlspecialchars($p['nome']) ?></div>
+            <div class="prod-views"><span><?= number_format($p['total_views']) ?></span> views</div>
         </div>
+        <?php $rank++; endforeach; ?>
+    </div>
+    <?php else: ?>
+        <p style="color:var(--gray);text-align:center;padding:1.5rem 0;font-size:0.85rem">Nenhum dado ainda.</p>
+    <?php endif; ?>
+</div> <!-- ✅ fechamento correto -->
+<?php endif; ?>
 
         <?php
         $labels_status = [
