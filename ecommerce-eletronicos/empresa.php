@@ -95,25 +95,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'logo'                => $logoAtual,
     ];
 
-    // Upload de logo
-    if (!empty($_FILES['logo']['tmp_name'])) {
-        $ext     = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-        if (in_array($ext, $allowed) && $_FILES['logo']['size'] <= 2 * 1024 * 1024) {
-            $novoNome = 'logo_tenant_' . intval($id_tenant) . '_' . time() . '.' . $ext;
-            $destino  = __DIR__ . '/uploads/' . $novoNome;
-            if (move_uploaded_file($_FILES['logo']['tmp_name'], $destino)) {
-                // Apaga logo antiga se existir
-                if (!empty($logoAtual)) {
-                    $caminhoAntigo = __DIR__ . '/uploads/' . basename($logoAtual);
-                    if (file_exists($caminhoAntigo)) @unlink($caminhoAntigo);
-                }
-                $campos['logo'] = $novoNome;
-            }
-        } else {
-            $msg = 'Logo inválida (máx 2MB, formatos: JPG, PNG, WEBP).'; $tipo_msg = 'danger';
+   // Upload de logo
+if (!empty($_FILES['logo']['tmp_name'])) {
+    $ext     = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
+    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    if (in_array($ext, $allowed) && $_FILES['logo']['size'] <= 2 * 1024 * 1024) {
+        try {
+            require_once __DIR__ . '/config/cloudinary.php';
+            $url_logo = cloudinary_upload($_FILES['logo']['tmp_name'], 'logos');
+            $campos['logo'] = $url_logo; // salva a URL completa do Cloudinary
+        } catch (Exception $e) {
+            $msg = 'Erro ao enviar logo: ' . $e->getMessage();
+            $tipo_msg = 'danger';
         }
+    } else {
+        $msg = 'Logo inválida (máx 2MB, formatos: JPG, PNG, WEBP).';
+        $tipo_msg = 'danger';
     }
+}
 
     if (empty($campos['nome_empresa'])) {
         $msg = 'O nome da empresa é obrigatório.'; $tipo_msg = 'danger';
