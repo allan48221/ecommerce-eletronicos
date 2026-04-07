@@ -1,17 +1,16 @@
 <?php
-// salvar_pedido.php
 require_once 'config/database.php';
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['success' => false, 'msg' => 'Método inválido']);
+    echo json_encode(['success' => false, 'msg' => 'Metodo invalido']);
     exit;
 }
 
 $dados = json_decode(file_get_contents('php://input'), true);
 if (!$dados) {
-    echo json_encode(['success' => false, 'msg' => 'Dados inválidos']);
+    echo json_encode(['success' => false, 'msg' => 'Dados invalidos']);
     exit;
 }
 
@@ -34,35 +33,33 @@ $val_total    = floatval($dados['valor_total'] ?? 0);
 $itens        = $dados['itens'] ?? [];
 
 if (!$nome || !$pagamento || empty($itens)) {
-    echo json_encode(['success' => false, 'msg' => 'Campos obrigatórios faltando']);
+    echo json_encode(['success' => false, 'msg' => 'Campos obrigatorios faltando']);
     exit;
 }
 
-// Garante que a coluna adicionais_json existe na tabela itens_pedido
 try {
     $conn->exec("ALTER TABLE itens_pedido ADD COLUMN IF NOT EXISTS adicionais_json TEXT DEFAULT NULL");
-} catch (\Throwable $e) {
-    // Coluna já existe ou banco não suporta — ignora
-}
+} catch (\Throwable $e) {}
 
 $conn->beginTransaction();
 try {
-   $sql = "INSERT INTO pedidos 
-        (nome_cliente, email_cliente, cpf_cliente, telefone_cliente,
-         endereco, numero, complemento, bairro, cidade, estado, cep,
-         forma_pagamento, observacoes, valor_produtos, valor_frete, valor_total, status, data_pedido, id_tenant)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', NOW(), ?)
-        RETURNING id_pedido";
+    $sql = "INSERT INTO pedidos 
+            (nome_cliente, email_cliente, cpf_cliente, telefone_cliente,
+             endereco, numero, complemento, bairro, cidade, estado, cep,
+             forma_pagamento, observacoes, valor_produtos, valor_frete, valor_total, status, data_pedido, id_tenant)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', NOW(), ?)
+            RETURNING id_pedido";
 
-$stmt->execute([
-    $nome, $email, $cpf, $telefone,
-    $endereco, $numero, $complemento, $bairro, $cidade, $estado, $cep,
-    $pagamento, $observacoes, $val_produtos, $val_frete, $val_total, $id_tenant // ← $id_tenant no final
-]);
+    $stmt = $conn->prepare($sql);
+    $stmt->execute([
+        $nome, $email, $cpf, $telefone,
+        $endereco, $numero, $complemento, $bairro, $cidade, $estado, $cep,
+        $pagamento, $observacoes, $val_produtos, $val_frete, $val_total, $id_tenant
+    ]);
+
     $row       = $stmt->fetch();
     $id_pedido = $row['id_pedido'];
 
-    // Salvar itens COM adicionais
     $stmt_item = $conn->prepare(
         "INSERT INTO itens_pedido
             (id_pedido, id_produto, nome_produto, quantidade, preco_unitario, subtotal, adicionais_json)
@@ -70,7 +67,6 @@ $stmt->execute([
     );
 
     foreach ($itens as $item) {
-        // Serializa adicionais como JSON (null se vazio)
         $adicionais = $item['adicionais'] ?? [];
         $adicionais_json = !empty($adicionais)
             ? json_encode($adicionais, JSON_UNESCAPED_UNICODE)
