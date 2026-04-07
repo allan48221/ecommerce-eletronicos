@@ -1,4 +1,5 @@
 <?php
+session_start();
 require_once 'config/database.php';
 $id_tenant = $_SESSION['id_tenant'] ?? null;
 header('Content-Type: application/json');
