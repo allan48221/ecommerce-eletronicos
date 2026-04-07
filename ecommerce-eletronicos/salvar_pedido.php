@@ -83,7 +83,9 @@ try {
         ]);
     }
 
+    // DEPOIS
     $conn->commit();
+    $_SESSION['carrinho'] = [];
     echo json_encode(['success' => true, 'id_pedido' => $id_pedido]);
 
 } catch (Exception $e) {
