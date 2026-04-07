@@ -7,12 +7,10 @@
  */
 function getDadosEmpresa(PDO $conn): array {
     $id_tenant = $_SESSION['id_tenant'] ?? null;
-
     try {
         $stmt = $conn->prepare("SELECT * FROM empresa WHERE id_tenant = ? LIMIT 1");
         $stmt->execute([$id_tenant]);
         $r = $stmt->fetch(PDO::FETCH_ASSOC);
-
         if ($r) {
             // Formata CNPJ: 00.000.000/0001-00
             if (!empty($r['cnpj']) && strlen($r['cnpj']) === 14) {
@@ -37,7 +35,6 @@ function getDadosEmpresa(PDO $conn): array {
             return $r;
         }
     } catch (\Throwable $e) {}
-
     // Retorna array vazio com todas as chaves para não quebrar o código
     return [
         'nome_empresa'      => '',
@@ -64,4 +61,10 @@ function getDadosEmpresa(PDO $conn): array {
         'logo'              => '',
         'endereco_completo' => '',
     ];
-}
+}                                                                                                                                                                                                                 function img_src(string $path): string {
+    if (empty($path)) return '';
+    // Se já é uma URL completa (Cloudinary), usa direto
+    if (str_starts_with($path, 'http')) return htmlspecialchars($path);
+    // Fallback para arquivos locais antigos (legado)
+    return 'uploads/' . htmlspecialchars($path);
+}          
