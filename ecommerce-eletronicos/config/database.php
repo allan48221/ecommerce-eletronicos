@@ -59,3 +59,8 @@ function registrar_log($conn, $tipo, $titulo, $detalhe = '', $valor = 0, $ref_id
         // Falha silenciosa
     }
 }
+function img_src(string $imagem): string {
+    if (empty($imagem)) return 'uploads/placeholder.jpg';
+    if (str_starts_with($imagem, 'http')) return $imagem;
+    return 'uploads/' . $imagem;
+}
