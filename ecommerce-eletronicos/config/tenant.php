@@ -70,16 +70,13 @@ function carregar_tenant(PDO $conn): void {
     $stmt->execute([$subdominio]);
     $tenant = $stmt->fetch();
 
-    if (!$tenant) {
-        // Empresa não encontrada ou inativa
-        _bloquear_acesso('empresa_nao_encontrada', $subdominio);
-    }
-
-    if (empty($tenant['id_licenca'])) {
-        // Empresa existe mas sem licença válida
-        _bloquear_acesso('licenca_invalida', $subdominio);
-    }
-
+// DEPOIS
+if (!$tenant || empty($tenant['id_licenca'])) {
+    // Sem tenant valido — acesso publico sem restricao de plano
+    $_SESSION['id_tenant']        = null;
+    $_SESSION['tenant_carregado'] = true;
+    return;
+}
     // Busca quais telas o plano libera
     $stmt2 = $conn->prepare("
         SELECT t.chave
