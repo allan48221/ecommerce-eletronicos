@@ -61,10 +61,13 @@ function getDadosEmpresa(PDO $conn): array {
         'logo'              => '',
         'endereco_completo' => '',
     ];
-}                                                                                                                                                                                                                 function img_src(string $path): string {
-    if (empty($path)) return '';
-    // Se já é uma URL completa (Cloudinary), usa direto
-    if (str_starts_with($path, 'http')) return htmlspecialchars($path);
-    // Fallback para arquivos locais antigos (legado)
-    return 'uploads/' . htmlspecialchars($path);
-}          
+}  
+if (!function_exists('img_src')) {
+    function img_src(string $path): string {
+        if (empty($path)) return '';
+        // Se já é uma URL completa (Cloudinary), usa direto
+        if (str_starts_with($path, 'http')) return htmlspecialchars($path);
+        // Fallback para arquivos locais antigos (legado)
+        return 'uploads/' . htmlspecialchars($path);
+    }
+}       
