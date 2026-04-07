@@ -1,22 +1,13 @@
 <?php
 session_start();
 $tenant   = $_GET['tenant']   ?? '';
-$redirect = $_GET['redirect'] ?? 'login.php'; // ← login faz mais sentido que index após sair
-
+$redirect = $_GET['redirect'] ?? 'index.php';
 session_unset();
 session_destroy();
-
-// Trava no subdomínio atual
-$host      = $_SERVER['HTTP_HOST'];
-$protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$base      = $protocolo . '://' . $host;
-
-// Garante que $redirect não seja uma URL externa (segurança)
-$redirect = basename($redirect);
-
+// Preserva o tenant na URL de destino
 if ($tenant) {
-    header("Location: {$base}/{$redirect}?tenant=" . urlencode($tenant));
+    header('Location: ' . $redirect . '?tenant=' . urlencode($tenant));
 } else {
-    header("Location: {$base}/{$redirect}");
+    header('Location: ' . $redirect);
 }
 exit;
