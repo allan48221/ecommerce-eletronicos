@@ -201,7 +201,7 @@ $total_carrinho = array_sum(array_column($_SESSION['carrinho'], 'quantidade'));
 
                         <?php foreach ($itens_carrinho as $item): ?>
                         <div class="item-resumo">
-                            <img src="uploads/<?= $item['produto']['imagem'] ?: 'placeholder.jpg' ?>"
+                            <img src="<?= img_src($item['produto']['imagem']) ?>"
                                  alt="<?= htmlspecialchars($item['produto']['nome']) ?>"
                                  onerror="this.src='uploads/placeholder.jpg'">
                             <div class="item-info">
