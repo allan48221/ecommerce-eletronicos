@@ -1,6 +1,7 @@
 <?php
 require_once 'config/database.php';
 require_once 'config/tema.php';
+require_once 'empresa_helper.php';
 
 if (!isset($_SESSION['id_admin']) || !is_numeric($_SESSION['id_admin'])) {
     header('Location: login.php'); exit;
@@ -47,6 +48,7 @@ foreach ([
     "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS formas_pagamento     VARCHAR(200) NOT NULL DEFAULT ''",
     "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS descricao_loja       TEXT         NOT NULL DEFAULT ''",
     "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS logo                 VARCHAR(300) NOT NULL DEFAULT ''",
+    "ALTER TABLE empresa ALTER COLUMN logo TYPE VARCHAR(600)",  
 ] as $alter) {
     try { $conn->exec($alter); } catch (\Throwable $e) {}
 }
