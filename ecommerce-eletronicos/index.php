@@ -125,7 +125,9 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
 
                 <a href="index.php" class="logo logo-mobile-right">
                     <?php if (!empty($emp['logo'])): ?>
-                        <img src="<?= htmlspecialchars($emp['logo']) ?>"
+                       <img src="<?= !empty($emp['logo']) && str_starts_with($emp['logo'], 'http') 
+    ? htmlspecialchars($emp['logo']) 
+    : 'uploads/' . htmlspecialchars($emp['logo']) ?>"
                              alt="<?= htmlspecialchars($emp['nome_fantasia'] ?: $emp['nome_empresa'] ?: 'Logo') ?>"
                              style="max-height:42px;max-width:160px;object-fit:contain;vertical-align:middle;display:block;">
                     <?php else: ?>
