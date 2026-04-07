@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $caminhoAntigo = __DIR__ . '/uploads/' . basename($logoAtual);
                     if (file_exists($caminhoAntigo)) @unlink($caminhoAntigo);
                 }
-                $campos['logo'] = 'uploads/' . $novoNome;
+                $campos['logo'] = $novoNome;
             }
         } else {
             $msg = 'Logo inválida (máx 2MB, formatos: JPG, PNG, WEBP).'; $tipo_msg = 'danger';
@@ -320,7 +320,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
             <div class="emp-card-body">
                 <?php if (!empty($empresa['logo'])): ?>
                 <div class="emp-logo-preview">
-                    <img src="<?= htmlspecialchars($empresa['logo']) ?>" alt="Logo atual">
+                    <img src="<?= img_src($empresa['logo']) ?>" alt="Logo atual">
                     <div class="emp-logo-info">
                         <strong>Logo atual</strong>
                         Para trocar, selecione uma nova imagem abaixo.
