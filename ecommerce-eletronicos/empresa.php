@@ -6,10 +6,13 @@ if (!isset($_SESSION['id_admin']) || !is_numeric($_SESSION['id_admin'])) {
     header('Location: login.php'); exit;
 }
 
+$id_tenant = $_SESSION['id_tenant'] ?? null;
+
 // ── Garante que a tabela existe ──────────────────────────────
 $conn->exec("
     CREATE TABLE IF NOT EXISTS empresa (
         id                   SERIAL PRIMARY KEY,
+        id_tenant            INTEGER,
         nome_empresa         VARCHAR(200) NOT NULL DEFAULT '',
         nome_fantasia        VARCHAR(200) NOT NULL DEFAULT '',
         cnpj                 VARCHAR(20)  NOT NULL DEFAULT '',
@@ -30,25 +33,30 @@ $conn->exec("
         horario_atendimento  VARCHAR(200) NOT NULL DEFAULT '',
         formas_pagamento     VARCHAR(200) NOT NULL DEFAULT '',
         descricao_loja       TEXT         NOT NULL DEFAULT '',
+        logo                 VARCHAR(300) NOT NULL DEFAULT '',
         atualizado_em        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
 ");
 
 // Adiciona colunas novas caso a tabela já existia
 foreach ([
-    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS instagram           VARCHAR(200) NOT NULL DEFAULT ''",
-    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS whatsapp            VARCHAR(20)  NOT NULL DEFAULT ''",
-    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS horario_atendimento VARCHAR(200) NOT NULL DEFAULT ''",
-    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS formas_pagamento    VARCHAR(200) NOT NULL DEFAULT ''",
-    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS descricao_loja      TEXT         NOT NULL DEFAULT ''",
+    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS id_tenant            INTEGER",
+    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS instagram            VARCHAR(200) NOT NULL DEFAULT ''",
+    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS whatsapp             VARCHAR(20)  NOT NULL DEFAULT ''",
+    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS horario_atendimento  VARCHAR(200) NOT NULL DEFAULT ''",
+    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS formas_pagamento     VARCHAR(200) NOT NULL DEFAULT ''",
+    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS descricao_loja       TEXT         NOT NULL DEFAULT ''",
+    "ALTER TABLE empresa ADD COLUMN IF NOT EXISTS logo                 VARCHAR(300) NOT NULL DEFAULT ''",
 ] as $alter) {
     try { $conn->exec($alter); } catch (\Throwable $e) {}
 }
 
-// Garante que sempre existe 1 registro
-$existe = $conn->query("SELECT id FROM empresa LIMIT 1")->fetch();
+// Garante que sempre existe 1 registro por tenant
+$stmtExiste = $conn->prepare("SELECT id FROM empresa WHERE id_tenant = ? LIMIT 1");
+$stmtExiste->execute([$id_tenant]);
+$existe = $stmtExiste->fetch();
 if (!$existe) {
-    $conn->exec("INSERT INTO empresa (nome_empresa) VALUES ('')");
+    $conn->prepare("INSERT INTO empresa (nome_empresa, id_tenant) VALUES ('', ?)")->execute([$id_tenant]);
 }
 
 $msg      = '';
@@ -56,7 +64,14 @@ $tipo_msg = '';
 
 // ── POST: Salvar ─────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    // Carrega logo atual antes de qualquer coisa
+    $stmtLogoAtual = $conn->prepare("SELECT logo FROM empresa WHERE id_tenant = ? LIMIT 1");
+    $stmtLogoAtual->execute([$id_tenant]);
+    $logoAtual = $stmtLogoAtual->fetchColumn() ?: '';
+
     $campos = [
+        'id_tenant'           => $id_tenant,
         'nome_empresa'        => trim($_POST['nome_empresa']           ?? ''),
         'nome_fantasia'       => trim($_POST['nome_fantasia']          ?? ''),
         'cnpj'                => preg_replace('/\D/', '', $_POST['cnpj'] ?? ''),
@@ -77,11 +92,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'horario_atendimento' => trim($_POST['horario_atendimento']    ?? ''),
         'formas_pagamento'    => trim($_POST['formas_pagamento']       ?? ''),
         'descricao_loja'      => trim($_POST['descricao_loja']         ?? ''),
+        'logo'                => $logoAtual,
     ];
+
+    // Upload de logo
+    if (!empty($_FILES['logo']['tmp_name'])) {
+        $ext     = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        if (in_array($ext, $allowed) && $_FILES['logo']['size'] <= 2 * 1024 * 1024) {
+            $novoNome = 'logo_tenant_' . intval($id_tenant) . '_' . time() . '.' . $ext;
+            $destino  = __DIR__ . '/uploads/' . $novoNome;
+            if (move_uploaded_file($_FILES['logo']['tmp_name'], $destino)) {
+                // Apaga logo antiga se existir
+                if (!empty($logoAtual)) {
+                    $caminhoAntigo = __DIR__ . '/uploads/' . basename($logoAtual);
+                    if (file_exists($caminhoAntigo)) @unlink($caminhoAntigo);
+                }
+                $campos['logo'] = 'uploads/' . $novoNome;
+            }
+        } else {
+            $msg = 'Logo inválida (máx 2MB, formatos: JPG, PNG, WEBP).'; $tipo_msg = 'danger';
+        }
+    }
 
     if (empty($campos['nome_empresa'])) {
         $msg = 'O nome da empresa é obrigatório.'; $tipo_msg = 'danger';
-    } else {
+    } elseif ($tipo_msg !== 'danger') {
         try {
             $conn->prepare("
                 UPDATE empresa SET
@@ -105,8 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     horario_atendimento  = :horario_atendimento,
                     formas_pagamento     = :formas_pagamento,
                     descricao_loja       = :descricao_loja,
+                    logo                 = :logo,
                     atualizado_em        = NOW()
-                WHERE id = (SELECT id FROM empresa LIMIT 1)
+                WHERE id_tenant = :id_tenant
             ")->execute($campos);
             $msg = 'Dados da empresa salvos com sucesso!'; $tipo_msg = 'success';
         } catch (\Throwable $e) {
@@ -116,7 +153,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Carrega dados atuais ─────────────────────────────────────
-$empresa = $conn->query("SELECT * FROM empresa LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+$stmtEmp = $conn->prepare("SELECT * FROM empresa WHERE id_tenant = ? LIMIT 1");
+$stmtEmp->execute([$id_tenant]);
+$empresa = $stmtEmp->fetch(PDO::FETCH_ASSOC);
 
 function fmtCnpj(string $v): string {
     $v = preg_replace('/\D/', '', $v);
@@ -143,7 +182,7 @@ function fmtWpp(string $v): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Dados da Empresa</title>
 <?= aplicar_tema($conn) ?>
- <link rel="icon" href="/favicon.png" type="image/png">
+<link rel="icon" href="/favicon.png" type="image/png">
 <link rel="shortcut icon" href="/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -185,7 +224,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .emp-field textarea::placeholder { color:#94a3b8; }
 .emp-field .hint { font-size:11px; color:#94a3b8; }
 
-/* prefixo no campo instagram */
 .emp-input-prefix { display:flex; align-items:center; border:1.5px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#f8fafc; transition:.2s; }
 .emp-input-prefix:focus-within { border-color:var(--primary,#2563eb); background:#fff; box-shadow:0 0 0 3px rgba(37,99,235,.08); }
 .emp-prefix-label { padding:10px 12px; font-size:13px; font-weight:600; color:#94a3b8; background:#f1f5f9; border-right:1.5px solid #e2e8f0; white-space:nowrap; }
@@ -194,14 +232,12 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .span-2 { grid-column: span 2; }
 @media (max-width:600px) { .span-2 { grid-column: span 1; } }
 
-/* preview do rodapé */
 .emp-preview { background:#1e1b4b; border-radius:12px; padding:20px 24px; margin-top:4px; }
 .emp-preview-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:#94a3b8; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
 .emp-preview-inner { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; }
 .emp-preview-col h4 { font-size:13px; font-weight:700; color:#fff; margin-bottom:6px; }
 .emp-preview-col p, .emp-preview-col a { font-size:12px; color:rgba(255,255,255,.7); display:block; margin-bottom:3px; text-decoration:none; }
 
-/* checkbox de formas de pagamento */
 .emp-pag-grid { display:flex; flex-wrap:wrap; gap:8px; }
 .emp-pag-pill { position:relative; }
 .emp-pag-pill input[type=checkbox] { position:absolute; opacity:0; width:0; height:0; }
@@ -212,6 +248,14 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .emp-btn-save:hover { opacity:.9; transform:translateY(-1px); }
 
 .emp-cnpj-atual { display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1e40af; font-size:12px; font-weight:700; padding:4px 12px; border-radius:20px; margin-top:4px; }
+
+/* Logo upload */
+.emp-logo-preview { display:flex; align-items:center; gap:16px; padding:14px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:12px; margin-bottom:10px; }
+.emp-logo-preview img { max-height:64px; max-width:180px; object-fit:contain; border-radius:8px; }
+.emp-logo-preview .emp-logo-info { font-size:12px; color:#64748b; }
+.emp-logo-preview .emp-logo-info strong { display:block; color:#0f172a; margin-bottom:2px; }
+.emp-file-input { padding:10px 13px; border:1.5px dashed #cbd5e1; border-radius:10px; font-size:13px; font-family:'Sora',sans-serif; background:#f8fafc; cursor:pointer; width:100%; }
+.emp-file-input:hover { border-color:var(--primary,#2563eb); background:#eff6ff; }
 </style>
 </head>
 <body>
@@ -230,7 +274,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
     <div class="emp-alert <?= $tipo_msg ?>"><?= htmlspecialchars($msg) ?></div>
     <?php endif; ?>
 
-    <form method="POST" autocomplete="off">
+    <form method="POST" autocomplete="off" enctype="multipart/form-data">
 
         <!-- IDENTIFICAÇÃO -->
         <div class="emp-card">
@@ -263,6 +307,30 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
                         <label>Descrição da Loja <span style="font-weight:400;text-transform:none;letter-spacing:0;">(aparece no rodapé)</span></label>
                         <textarea name="descricao_loja" placeholder="Ex: Sua loja de eletrônicos premium com os melhores preços e atendimento de excelência."><?= htmlspecialchars($empresa['descricao_loja'] ?? '') ?></textarea>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LOGO -->
+        <div class="emp-card">
+            <div class="emp-card-head">
+                <div class="ico">🖼️</div>
+                <h2>Logo da Empresa <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">(exibida no topo da loja)</span></h2>
+            </div>
+            <div class="emp-card-body">
+                <?php if (!empty($empresa['logo'])): ?>
+                <div class="emp-logo-preview">
+                    <img src="<?= htmlspecialchars($empresa['logo']) ?>" alt="Logo atual">
+                    <div class="emp-logo-info">
+                        <strong>Logo atual</strong>
+                        Para trocar, selecione uma nova imagem abaixo.
+                    </div>
+                </div>
+                <?php endif; ?>
+                <div class="emp-field">
+                    <label><?= !empty($empresa['logo']) ? 'Trocar Logo' : 'Enviar Logo' ?></label>
+                    <input type="file" name="logo" accept="image/jpeg,image/png,image/webp,image/gif" class="emp-file-input">
+                    <span class="hint">Formatos aceitos: JPG, PNG, WEBP. Tamanho máximo: 2MB. Recomendado: fundo transparente (PNG).</span>
                 </div>
             </div>
         </div>
@@ -432,7 +500,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 </div>
 
 <script>
-// ── Máscaras ──────────────────────────────────────────────────
 document.getElementById('inp-cnpj').addEventListener('input', function() {
     let v = this.value.replace(/\D/g,'').slice(0,14);
     v = v.replace(/(\d{2})(\d)/,'$1.$2');
@@ -451,7 +518,6 @@ document.getElementById('inp-tel').addEventListener('input',function(){maskTel(t
 document.getElementById('inp-cel').addEventListener('input',function(){maskTel(this,true);});
 document.getElementById('inp-wpp').addEventListener('input',function(){maskTel(this,true);});
 
-// ── CEP ───────────────────────────────────────────────────────
 document.getElementById('inp-cep').addEventListener('input', function() {
     let v=this.value.replace(/\D/g,'').slice(0,8);
     if(v.length===8)this.value=v.slice(0,5)+'-'+v.slice(5); else this.value=v;
@@ -472,7 +538,6 @@ async function buscarCep(cep){
     }catch(e){}
 }
 
-// ── Formas de pagamento → hidden ──────────────────────────────
 function syncPagamento(){
     const checks=document.querySelectorAll('input[name="formas_pagamento_arr[]"]:checked');
     document.getElementById('hid-formas-pag').value=Array.from(checks).map(c=>c.value).join(', ');
@@ -480,7 +545,6 @@ function syncPagamento(){
 }
 document.querySelectorAll('input[name="formas_pagamento_arr[]"]').forEach(c=>c.addEventListener('change',syncPagamento));
 
-// ── Preview em tempo real ─────────────────────────────────────
 function v(id){return (document.querySelector('[name="'+id+'"]')||{}).value||'';}
 function atualizarPreview(){
     const nome    = v('nome_fantasia')||v('nome_empresa');
@@ -511,11 +575,10 @@ function atualizarPreview(){
     document.getElementById('pv-pag').textContent = pag ? '💳 '+pag : '';
 }
 
-// Dispara preview em todos os campos de texto
 document.querySelectorAll('.emp-field input, .emp-field textarea').forEach(el=>{
     el.addEventListener('input', atualizarPreview);
 });
-atualizarPreview(); // roda na carga com os valores já salvos
+atualizarPreview();
 </script>
 </body>
 </html>
