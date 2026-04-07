@@ -59,7 +59,7 @@ foreach ($_SESSION['carrinho'] as $item) {
     $total_carrinho += is_array($item) ? ($item['quantidade'] ?? 0) : intval($item);
 }
 
-// ── Prepara dados do footer ──────────────────────────────────
+// Prepara dados do footer
 $formas_pag = [];
 if (!empty($emp['formas_pagamento'])) {
     $formas_pag = array_filter(array_map('trim', explode(',', $emp['formas_pagamento'])));
@@ -122,7 +122,16 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
         <div class="main-nav">
             <div class="container">
                 <div class="menu-toggle" onclick="toggleSidebar()">&#9776;</div>
-                <a href="index.php" class="logo logo-mobile-right">Logo da empresa</a>
+
+                <a href="index.php" class="logo logo-mobile-right">
+                    <?php if (!empty($emp['logo'])): ?>
+                        <img src="<?= htmlspecialchars($emp['logo']) ?>"
+                             alt="<?= htmlspecialchars($emp['nome_fantasia'] ?: $emp['nome_empresa'] ?: 'Logo') ?>"
+                             style="max-height:42px;max-width:160px;object-fit:contain;vertical-align:middle;display:block;">
+                    <?php else: ?>
+                        <?= htmlspecialchars($emp['nome_fantasia'] ?: $emp['nome_empresa'] ?: 'Logo da empresa') ?>
+                    <?php endif; ?>
+                </a>
 
                 <a href="carrinho.php" id="carrinho-mobile-btn" class="carrinho-mobile-btn">
                     <svg width="29" height="29" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -206,28 +215,28 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
             </div>
             <div class="cc-body">
                 <div class="cc-step">
-                    <div class="cc-icon c1">🛍️</div>
+                    <div class="cc-icon c1">&#128717;</div>
                     <div class="cc-text">
                         <div class="cc-title-row"><span class="cc-num n1">1</span><span class="cc-step-title">Escolha seu produto</span></div>
-                        <p class="cc-step-desc">Navegue pela loja e encontre o que você procura</p>
+                        <p class="cc-step-desc">Navegue pela loja e encontre o que voce procura</p>
                     </div>
                 </div>
                 <div class="cc-step">
-                    <div class="cc-icon c2">🛒</div>
+                    <div class="cc-icon c2">&#128cart;</div>
                     <div class="cc-text">
                         <div class="cc-title-row"><span class="cc-num n2">2</span><span class="cc-step-title">Adicione ao carrinho</span></div>
-                        <p class="cc-step-desc">Clique no botão para adicionar itens ao seu carrinho</p>
+                        <p class="cc-step-desc">Clique no botao para adicionar itens ao seu carrinho</p>
                     </div>
                 </div>
                 <div class="cc-step">
-                    <div class="cc-icon c3">📋</div>
+                    <div class="cc-icon c3">&#128203;</div>
                     <div class="cc-text">
-                        <div class="cc-title-row"><span class="cc-num n3">3</span><span class="cc-step-title">Vá até o carrinho</span></div>
+                        <div class="cc-title-row"><span class="cc-num n3">3</span><span class="cc-step-title">Va ate o carrinho</span></div>
                         <p class="cc-step-desc">Revise os produtos selecionados</p>
                     </div>
                 </div>
                 <div class="cc-step">
-                    <div class="cc-icon c4">💬</div>
+                    <div class="cc-icon c4">&#128172;</div>
                     <div class="cc-text">
                         <div class="cc-title-row"><span class="cc-num n4">4</span><span class="cc-step-title">Finalize no WhatsApp</span></div>
                         <p class="cc-step-desc">Preencha seus dados e clique em <strong>Finalizar no WhatsApp</strong> da loja!</p>
@@ -255,7 +264,7 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
     <div class="container">
 
         <?php if (isset($_GET['logout']) && $_GET['logout'] === 'success'): ?>
-            <div class="alert alert-success">Você saiu do sistema com sucesso!</div>
+            <div class="alert alert-success">Voce saiu do sistema com sucesso!</div>
         <?php endif; ?>
 
         <div class="card">
@@ -263,7 +272,7 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
                 <?= htmlspecialchars($emp['nome_fantasia'] ?: $emp['nome_empresa'] ?: 'Bem-vindo!') ?>
             </h1>
             <p style="text-align:center;font-size:1.2rem;color:var(--gray);">
-                <?= htmlspecialchars($emp['descricao_loja'] ?? 'Os melhores produtos com os melhores preços!') ?>
+                <?= htmlspecialchars($emp['descricao_loja'] ?? 'Os melhores produtos com os melhores precos!') ?>
             </p>
         </div>
 
@@ -299,7 +308,7 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
                             <?php if ($produto['estoque'] > 0): ?>
                                 <button onclick="adicionarAoCarrinho(<?= $produto['id_produto']; ?>, this)" class="btn btn-primary btn-block">Adicionar ao Carrinho</button>
                             <?php else: ?>
-                                <button class="btn btn-secondary btn-block" disabled>Indisponível</button>
+                                <button class="btn btn-secondary btn-block" disabled>Indisponivel</button>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -343,7 +352,7 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
                             <?php if ($produto['estoque'] > 0): ?>
                                 <button onclick="adicionarAoCarrinho(<?= $produto['id_produto']; ?>, this)" class="btn btn-primary btn-block">Adicionar ao Carrinho</button>
                             <?php else: ?>
-                                <button class="btn btn-secondary btn-block" disabled>Indisponível</button>
+                                <button class="btn btn-secondary btn-block" disabled>Indisponivel</button>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -387,12 +396,12 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
                     <div class="footer-social" style="flex-direction:column;gap:0.75rem;">
                         <?php if (!empty($insta_handle)): ?>
                         <a href="https://instagram.com/<?= htmlspecialchars($insta_handle) ?>" target="_blank" class="social-icon" style="display:flex;align-items:center;gap:10px;font-size:0.9rem;color:rgba(255,255,255,0.75);">
-                            📸 @<?= htmlspecialchars($insta_handle) ?>
+                            @<?= htmlspecialchars($insta_handle) ?>
                         </a>
                         <?php endif; ?>
                         <?php if (!empty($wpp_numero)): ?>
                         <a href="https://wa.me/55<?= $wpp_numero ?>" target="_blank" class="social-icon" style="display:flex;align-items:center;gap:10px;font-size:0.9rem;color:rgba(255,255,255,0.75);">
-                            💬 WhatsApp
+                            WhatsApp
                         </a>
                         <?php endif; ?>
                         <?php if (empty($insta_handle) && empty($wpp_numero)): ?>
