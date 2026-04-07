@@ -350,7 +350,7 @@ $total_carrinho = array_sum(array_column($_SESSION['carrinho'], 'quantidade'));
                 var url = 'https://wa.me/5591984305884?text=' + encodeURIComponent(mensagem);
                 window.open(url, '_blank');
 
-                setTimeout(function() { window.location.href = 'index.php'; }, 1500);
+                setTimeout(function() { window.location.href = 'limpar_carrinho.php'; }, 1500);
             } else {
                 alert('Erro ao registrar pedido: ' + (res.msg || 'Tente novamente.'));
                 btn.disabled = false;
