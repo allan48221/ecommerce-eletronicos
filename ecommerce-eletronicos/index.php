@@ -291,7 +291,7 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
                         <?php if (!empty($produto['preco_promocional']) && $produto['preco_promocional'] > 0): ?>
                             <span class="badge-promocao">-<?= round((($produto['preco'] - $produto['preco_promocional']) / $produto['preco']) * 100); ?>%</span>
                         <?php endif; ?>
-                        <img src="<?= !empty($produto['imagem']) && str_starts_with($produto['imagem'], 'http') ? $produto['imagem'] : 'uploads/' . ($produto['imagem'] ?: 'placeholder.jpg') ?>"
+                       <img src="<?= img_src($produto['imagem']) ?: 'uploads/placeholder.jpg' ?>"
                              alt="<?= htmlspecialchars($produto['nome']); ?>"
                              class="produto-imagem" style="cursor:pointer;"
                              onclick="verProduto(<?= $produto['id_produto']; ?>)"
@@ -334,7 +334,7 @@ $cidade_uf    = trim(($emp['cidade'] ?? '') . ($emp['uf'] ? ' - ' . $emp['uf'] :
                         <?php if (!empty($produto['preco_promocional']) && $produto['preco_promocional'] > 0): ?>
                             <span class="badge-promocao">-<?= round((($produto['preco'] - $produto['preco_promocional']) / $produto['preco']) * 100); ?>%</span>
                         <?php endif; ?>
-                       <img src="<?= !empty($produto['imagem']) && str_starts_with($produto['imagem'], 'http') ? $produto['imagem'] : 'uploads/' . ($produto['imagem'] ?: 'placeholder.jpg') ?>"
+                      <img src="<?= img_src($produto['imagem']) ?: 'uploads/placeholder.jpg' ?>"
                              alt="<?= htmlspecialchars($produto['nome']); ?>"
                              class="produto-imagem" style="cursor:pointer;"
                              onclick="verProduto(<?= $produto['id_produto']; ?>)"
