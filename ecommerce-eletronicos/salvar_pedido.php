@@ -1,6 +1,7 @@
 <?php
 // salvar_pedido.php
 require_once 'config/database.php';
+$id_tenant = $_SESSION['id_tenant'] ?? null;
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -46,19 +47,18 @@ try {
 
 $conn->beginTransaction();
 try {
-    $sql = "INSERT INTO pedidos 
-            (nome_cliente, email_cliente, cpf_cliente, telefone_cliente,
-             endereco, numero, complemento, bairro, cidade, estado, cep,
-             forma_pagamento, observacoes, valor_produtos, valor_frete, valor_total, status, data_pedido)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', NOW())
-            RETURNING id_pedido";
+   $sql = "INSERT INTO pedidos 
+        (nome_cliente, email_cliente, cpf_cliente, telefone_cliente,
+         endereco, numero, complemento, bairro, cidade, estado, cep,
+         forma_pagamento, observacoes, valor_produtos, valor_frete, valor_total, status, data_pedido, id_tenant)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', NOW(), ?)
+        RETURNING id_pedido";
 
-    $stmt = $conn->prepare($sql);
-    $stmt->execute([
-        $nome, $email, $cpf, $telefone,
-        $endereco, $numero, $complemento, $bairro, $cidade, $estado, $cep,
-        $pagamento, $observacoes, $val_produtos, $val_frete, $val_total
-    ]);
+$stmt->execute([
+    $nome, $email, $cpf, $telefone,
+    $endereco, $numero, $complemento, $bairro, $cidade, $estado, $cep,
+    $pagamento, $observacoes, $val_produtos, $val_frete, $val_total, $id_tenant // ← $id_tenant no final
+]);
     $row       = $stmt->fetch();
     $id_pedido = $row['id_pedido'];
 
