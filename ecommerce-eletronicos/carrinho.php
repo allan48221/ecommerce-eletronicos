@@ -387,9 +387,9 @@ if ($total_carrinho == 0 && !empty($_SESSION['carrinho'])) {
                                     &#10005;
                                 </button>
 
-                                <img src="uploads/<?= $produto['imagem'] ?: 'placeholder.jpg' ?>"
-                                     alt="<?= htmlspecialchars($produto['nome']) ?>"
-                                     onerror="this.src='uploads/placeholder.jpg'">
+                                <img src="<?= !empty($produto['imagem']) && str_starts_with($produto['imagem'], 'http') ? $produto['imagem'] : 'uploads/' . ($produto['imagem'] ?: 'placeholder.jpg') ?>"
+     alt="<?= htmlspecialchars($produto['nome']) ?>"
+     onerror="this.src='uploads/placeholder.jpg'">
 
                                 <div class="carrinho-info">
                                     <h3><?= htmlspecialchars($produto['nome']) ?></h3>
