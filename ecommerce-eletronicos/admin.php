@@ -420,7 +420,7 @@ if ($res_cores) {
             </div>
         </div>
 
-       <?php if (in_array($plano_atual, ['basico'])): ?>
+       <?php if (in_array($plano_admin, ['basico'])): ?>
 <div class="card">
     <h2 class="card-title">Top 3 Mais Vistos</h2>
     <?php
