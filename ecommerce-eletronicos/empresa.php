@@ -64,6 +64,38 @@ if (!$existe) {
 $msg      = '';
 $tipo_msg = '';
 
+// ── Salvar novo local ────────────────────────────────────────
+if (isset($_POST['acao_local'])) {
+    if ($_POST['acao_local'] === 'adicionar') {
+        $stmt = $conn->prepare("
+            INSERT INTO locais_permitidos (id_tenant, nome, lat, lng, raio_metros)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $id_tenant,
+            trim($_POST['local_nome']),
+            $_POST['local_lat'],
+            $_POST['local_lng'],
+            intval($_POST['local_raio'])
+        ]);
+    }
+    if ($_POST['acao_local'] === 'remover') {
+        $conn->prepare("DELETE FROM locais_permitidos WHERE id = ? AND id_tenant = ?")
+             ->execute([$_POST['local_id'], $id_tenant]);
+    }
+    if ($_POST['acao_local'] === 'toggle') {
+        $conn->prepare("UPDATE locais_permitidos SET ativo = NOT ativo WHERE id = ? AND id_tenant = ?")
+             ->execute([$_POST['local_id'], $id_tenant]);
+    }
+    header('Location: empresa.php#secao-locais');
+    exit;
+}
+
+// ── Carrega locais ───────────────────────────────────────────
+$stmt_locais = $conn->prepare("SELECT * FROM locais_permitidos WHERE id_tenant = ? ORDER BY criado_em DESC");
+$stmt_locais->execute([$id_tenant]);
+$locais = $stmt_locais->fetchAll(PDO::FETCH_ASSOC);
+
 // ── POST: Salvar ─────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -257,6 +289,35 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .emp-logo-preview .emp-logo-info strong { display:block; color:#0f172a; margin-bottom:2px; }
 .emp-file-input { padding:10px 13px; border:1.5px dashed #cbd5e1; border-radius:10px; font-size:13px; font-family:'Sora',sans-serif; background:#f8fafc; cursor:pointer; width:100%; }
 .emp-file-input:hover { border-color:var(--primary,#2563eb); background:#eff6ff; }
+/* ── Locais permitidos ── */
+.local-card {
+    background: #f8fafc; border: 1.5px solid #e2e8f0;
+    border-radius: 12px; padding: 14px 16px;
+    display: flex; justify-content: space-between;
+    align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 8px; transition: .2s;
+}
+.local-card:hover { border-color: var(--primary, #2563eb); }
+.local-card.inativo { opacity: .5; }
+.local-nome { font-size: 14px; font-weight: 700; color: #0f172a; }
+.local-info { font-size: 12px; color: #64748b; margin-top: 2px; }
+.local-acoes { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-local {
+    padding: 6px 12px; border-radius: 8px; font-size: 12px;
+    font-weight: 600; cursor: pointer; border: 1.5px solid;
+    font-family: 'Sora', sans-serif; transition: .15s;
+}
+.btn-local-toggle { border-color: #e2e8f0; background: #fff; color: #475569; }
+.btn-local-toggle:hover { border-color: #94a3b8; }
+.btn-local-del { border-color: #fecaca; background: #fef2f2; color: #dc2626; }
+.btn-local-del:hover { background: #dc2626; color: #fff; }
+#mapa-local { width: 100%; height: 320px; border-radius: 12px; border: 1.5px solid #e2e8f0; margin: 12px 0; z-index: 1; }
+.raio-wrap { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.raio-wrap input[type=range] { flex: 1; }
+.raio-num { font-size: 14px; font-weight: 700; min-width: 46px; color: var(--primary, #2563eb); }
+.tag-ativo   { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.tag-inativo { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+
 </style>
 </head>
 <body>
@@ -489,6 +550,114 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
             </div>
         </div>
 
+<!-- LOCAIS PERMITIDOS -->
+<div class="emp-card" id="secao-locais">
+    <div class="emp-card-head">
+        <div class="ico">📍</div>
+        <h2>Locais de Acesso Permitidos <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">(GPS — atendentes e caixas)</span></h2>
+    </div>
+    <div class="emp-card-body">
+        <p style="font-size:13px;color:#64748b;margin-bottom:16px;">
+            Atendentes, caixas e vendedores só poderão fazer login dentro do raio de algum local cadastrado abaixo.
+        </p>
+
+        <!-- Lista de locais cadastrados -->
+        <?php if (empty($locais)): ?>
+        <div style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:13px;background:#f8fafc;border-radius:10px;margin-bottom:16px;">
+            Nenhum local cadastrado. Adicione abaixo.
+        </div>
+        <?php else: ?>
+        <div style="margin-bottom:16px;">
+            <?php foreach ($locais as $local): ?>
+            <div class="local-card <?= $local['ativo'] ? '' : 'inativo' ?>">
+                <div>
+                    <div class="local-nome"><?= htmlspecialchars($local['nome']) ?></div>
+                    <div class="local-info">
+                        Raio: <?= $local['raio_metros'] ?>m &nbsp;·&nbsp;
+                        <?= number_format($local['lat'], 6) ?>, <?= number_format($local['lng'], 6) ?>
+                        &nbsp;·&nbsp;
+                        <span class="<?= $local['ativo'] ? 'tag-ativo' : 'tag-inativo' ?>">
+                            <?= $local['ativo'] ? 'Ativo' : 'Inativo' ?>
+                        </span>
+                    </div>
+                </div>
+                <div class="local-acoes">
+                    <form method="POST" style="display:inline">
+                        <input type="hidden" name="acao_local" value="toggle">
+                        <input type="hidden" name="local_id" value="<?= $local['id'] ?>">
+                        <button class="btn-local btn-local-toggle"><?= $local['ativo'] ? 'Desativar' : 'Ativar' ?></button>
+                    </form>
+                    <form method="POST" style="display:inline" onsubmit="return confirm('Remover este local?')">
+                        <input type="hidden" name="acao_local" value="remover">
+                        <input type="hidden" name="local_id" value="<?= $local['id'] ?>">
+                        <button class="btn-local btn-local-del">Remover</button>
+                    </form>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- Formulário para adicionar -->
+        <div style="background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:16px;">
+            <p style="font-size:13px;font-weight:700;color:#1e40af;margin-bottom:12px;">
+                Adicionar novo local
+            </p>
+
+            <div class="emp-field" style="margin-bottom:12px;">
+                <label>Nome do local</label>
+                <input type="text" id="inp-local-nome" placeholder="Ex: Filial Centro, Loja Principal..." style="background:#fff;">
+            </div>
+
+            <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                <button type="button" onclick="usarGPSLocal()"
+                    style="padding:9px 16px;background:#2563eb;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;">
+                    Usar minha localização
+                </button>
+                <span style="font-size:12px;color:#64748b;align-self:center;">ou clique no mapa para definir o ponto</span>
+            </div>
+
+            <div id="mapa-local"></div>
+
+            <div class="raio-wrap">
+                <label style="font-size:13px;font-weight:600;color:#374151;white-space:nowrap;">Raio:</label>
+                <input type="range" min="10" max="500" step="5" value="30" id="raio-slider" oninput="atualizarRaioMapa(this.value)">
+                <span class="raio-num" id="raio-num">30m</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+                <div>
+                    <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Latitude</label>
+                    <div style="font-size:13px;font-weight:600;color:#1e40af;background:#fff;padding:8px 12px;border-radius:8px;border:1.5px solid #bfdbfe;margin-top:4px;" id="show-lat">—</div>
+                </div>
+                <div>
+                    <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Longitude</label>
+                    <div style="font-size:13px;font-weight:600;color:#1e40af;background:#fff;padding:8px 12px;border-radius:8px;border:1.5px solid #bfdbfe;margin-top:4px;" id="show-lng">—</div>
+                </div>
+            </div>
+
+            <form method="POST" onsubmit="return prepararLocalForm(this)">
+                <input type="hidden" name="acao_local" value="adicionar">
+                <input type="hidden" name="local_nome" id="hid-nome">
+                <input type="hidden" name="local_lat"  id="hid-lat">
+                <input type="hidden" name="local_lng"  id="hid-lng">
+                <input type="hidden" name="local_raio" id="hid-raio" value="30">
+                <button type="submit" class="emp-btn-save" style="width:100%;justify-content:center;">
+                    Salvar Local
+                </button>
+            </form>
+        </div>
+
+        <!-- Locais existentes no mapa -->
+        <?php if (!empty($locais)): ?>
+        <div style="margin-top:16px;">
+            <p style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Locais cadastrados no mapa</p>
+            <div id="mapa-todos" style="width:100%;height:260px;border-radius:12px;border:1.5px solid #e2e8f0;"></div>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+        
         <!-- SALVAR -->
         <div style="display:flex; justify-content:flex-end; margin-top:8px;">
             <button type="submit" class="emp-btn-save">
@@ -580,6 +749,85 @@ document.querySelectorAll('.emp-field input, .emp-field textarea').forEach(el=>{
     el.addEventListener('input', atualizarPreview);
 });
 atualizarPreview();
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── Mapa de adição ──────────────────────────────────────────
+const mapaAdd = L.map('mapa-local').setView([-15.7801, -47.9292], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapaAdd);
+
+let markerAdd  = null;
+let circuloAdd = null;
+let raioAtual  = 30;
+
+function atualizarPontoAdd(lat, lng) {
+    document.getElementById('show-lat').textContent = lat.toFixed(7);
+    document.getElementById('show-lng').textContent = lng.toFixed(7);
+    document.getElementById('hid-lat').value = lat.toFixed(8);
+    document.getElementById('hid-lng').value = lng.toFixed(8);
+
+    if (markerAdd)  markerAdd.setLatLng([lat, lng]);
+    else markerAdd = L.marker([lat, lng], {draggable: true}).addTo(mapaAdd)
+                      .on('dragend', e => {
+                          const p = e.target.getLatLng();
+                          atualizarPontoAdd(p.lat, p.lng);
+                      });
+
+    if (circuloAdd) circuloAdd.setLatLng([lat, lng]);
+    else circuloAdd = L.circle([lat, lng], {
+        radius: raioAtual, color: '#2563eb',
+        fillColor: '#2563eb', fillOpacity: .15, weight: 2
+    }).addTo(mapaAdd);
+}
+
+function atualizarRaioMapa(v) {
+    raioAtual = parseInt(v);
+    document.getElementById('raio-num').textContent = v + 'm';
+    document.getElementById('hid-raio').value = v;
+    if (circuloAdd) circuloAdd.setRadius(raioAtual);
+}
+
+mapaAdd.on('click', e => atualizarPontoAdd(e.latlng.lat, e.latlng.lng));
+
+function usarGPSLocal() {
+    if (!navigator.geolocation) { alert('GPS não disponível'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+        mapaAdd.setView([pos.coords.latitude, pos.coords.longitude], 18);
+        atualizarPontoAdd(pos.coords.latitude, pos.coords.longitude);
+    }, () => alert('Não foi possível obter localização.'));
+}
+
+function prepararLocalForm(form) {
+    const nome = document.getElementById('inp-local-nome').value.trim();
+    const lat  = document.getElementById('hid-lat').value;
+    const lng  = document.getElementById('hid-lng').value;
+    if (!nome) { alert('Digite um nome para o local.'); return false; }
+    if (!lat || !lng) { alert('Defina um ponto no mapa ou use sua localização.'); return false; }
+    document.getElementById('hid-nome').value = nome;
+    return true;
+}
+
+// ── Mapa com todos os locais cadastrados ────────────────────
+<?php if (!empty($locais)): ?>
+const mapaTodos = L.map('mapa-todos');
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapaTodos);
+const bounds = [];
+
+<?php foreach ($locais as $local): ?>
+const latlng_<?= $local['id'] ?> = [<?= $local['lat'] ?>, <?= $local['lng'] ?>];
+L.circle(latlng_<?= $local['id'] ?>, {
+    radius: <?= $local['raio_metros'] ?>,
+    color: '<?= $local['ativo'] ? '#2563eb' : '#94a3b8' ?>',
+    fillOpacity: .15, weight: 2
+}).addTo(mapaTodos);
+L.marker(latlng_<?= $local['id'] ?>)
+ .addTo(mapaTodos)
+ .bindPopup('<?= addslashes(htmlspecialchars($local['nome'])) ?> — <?= $local['raio_metros'] ?>m');
+bounds.push(latlng_<?= $local['id'] ?>);
+<?php endforeach; ?>
+
+if (bounds.length) mapaTodos.fitBounds(bounds, {padding: [30, 30]});
+<?php endif; ?>
 </script>
 </body>
 </html>
