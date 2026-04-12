@@ -165,13 +165,13 @@ if (isset($_GET['editar'])) {
 
         <?php if ($mensagem): ?>
             <div class="alert-custom <?= $tipo_msg ?>">
-                <?= $tipo_msg === 'sucesso' ? '✅' : '❌' ?> <?= htmlspecialchars($mensagem) ?>
+                <?= $tipo_msg === 'sucesso' ? '' : '' ?> <?= htmlspecialchars($mensagem) ?>
             </div>
         <?php endif; ?>
 
         <div class="card">
             <div class="page-header">
-                <h2>📂 Gerenciar Categorias</h2>
+                <h2> Gerenciar Categorias</h2>
                 <div class="page-header-actions">
                     <a href="admin.php" class="action-btn voltar">← Voltar</a>
                     <a href="categorias.php?nova=1" class="action-btn nova-cat">+ Nova Categoria</a>
@@ -194,7 +194,7 @@ if (isset($_GET['editar'])) {
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn-salvar">✔ Salvar Categoria</button>
+                        <button type="submit" class="btn-salvar"> Salvar Categoria</button>
                         <a href="categorias.php" class="btn-cancelar">Cancelar</a>
                     </div>
                 </form>
@@ -203,7 +203,7 @@ if (isset($_GET['editar'])) {
 
             <?php if ($categoria_editar): ?>
             <div class="form-card">
-                <h3>✏️ Editar: <?= htmlspecialchars($categoria_editar['nome']) ?></h3>
+                <h3> Editar: <?= htmlspecialchars($categoria_editar['nome']) ?></h3>
                 <form method="POST" action="categorias.php">
                     <input type="hidden" name="acao" value="editar">
                     <input type="hidden" name="id_categoria" value="<?= $categoria_editar['id_categoria'] ?>">
@@ -218,7 +218,7 @@ if (isset($_GET['editar'])) {
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn-salvar">✔ Salvar Alterações</button>
+                        <button type="submit" class="btn-salvar"> Salvar Alterações</button>
                         <a href="categorias.php" class="btn-cancelar">Cancelar</a>
                     </div>
                 </form>
@@ -231,13 +231,13 @@ if (isset($_GET['editar'])) {
                 <div class="cat-card">
                     <div class="cat-card-top">
                         <span class="cat-card-name"><?= htmlspecialchars($cat['nome']) ?></span>
-                        <span class="badge-qtd">📦 <?= $cat['total_produtos'] ?></span>
+                        <span class="badge-qtd"> <?= $cat['total_produtos'] ?></span>
                     </div>
                     <?php if ($cat['descricao']): ?>
                     <p class="cat-card-desc"><?= htmlspecialchars($cat['descricao']) ?></p>
                     <?php endif; ?>
                     <div class="cat-actions">
-                        <a href="categorias.php?editar=<?= $cat['id_categoria'] ?>" class="action-btn editar">✏️ Editar</a>
+                        <a href="categorias.php?editar=<?= $cat['id_categoria'] ?>" class="action-btn editar"> Editar</a>
                         <button class="action-btn excluir" onclick="confirmarExclusao(<?= $cat['id_categoria'] ?>, '<?= htmlspecialchars(addslashes($cat['nome'])) ?>', <?= $cat['total_produtos'] ?>)">🗑️ Excluir</button>
                     </div>
                 </div>
@@ -273,7 +273,7 @@ if (isset($_GET['editar'])) {
 
             <?php else: ?>
             <div class="empty-state">
-                <div style="font-size:3rem;margin-bottom:0.75rem">📂</div>
+                <div style="font-size:3rem;margin-bottom:0.75rem"></div>
                 <p>Nenhuma categoria cadastrada ainda.</p>
             </div>
             <?php endif; ?>
@@ -282,7 +282,7 @@ if (isset($_GET['editar'])) {
 
     <div class="modal-overlay" id="modal-excluir">
         <div class="modal-box">
-            <div style="font-size:2.5rem;margin-bottom:0.6rem">⚠️</div>
+            <div style="font-size:2.5rem;margin-bottom:0.6rem"></div>
             <h3>Excluir Categoria</h3>
             <p id="modal-msg">Tem certeza que deseja excluir esta categoria?</p>
             <div class="modal-btns">
