@@ -26,7 +26,7 @@ if (!empty($id_tenant)) {
     $subdominio_logout = $stmt_sub->fetchColumn() ?: '';
 }
 $url_saida = $subdominio_logout
-    ? 'logout.php?redirect=index.php&tenant=' . urlencode($subdominio_logout)
+    ? 'logout.php?redirect=login.php&tenant=' . urlencode($subdominio_logout)
     : 'logout.php';
 
 // Verifica se o plano tem acesso a loja
