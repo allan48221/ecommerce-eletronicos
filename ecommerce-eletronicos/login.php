@@ -194,7 +194,7 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
         <div class="tipo-selector">
             <?php
             $telas_tipo = ['admin' => 'admin', 'vendedor' => 'venda_presencial', 'atendente' => 'atendente', 'caixa' => 'caixa'];
-            $icons  = ['admin'=>'🔐','vendedor'=>'🛍️','atendente'=>'🧾','caixa'=>'💰'];
+            $icons  = ['admin'=>'','vendedor'=>'','atendente'=>'','caixa'=>''];
             $labels = ['admin'=>'Admin','vendedor'=>'Vendedor','atendente'=>'Atendente','caixa'=>'Caixa'];
             foreach (['admin','vendedor','atendente','caixa'] as $tipo):
                 $liberado = ($tipo === 'admin') || tela_liberada($telas_tipo[$tipo]);
@@ -253,10 +253,10 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
 <script src="js/main.js"></script>
 <script>
 const hints = {
-    admin:     '🔐 Acesso ao painel administrativo completo',
-    vendedor:  '🛍️ Acesso à tela de Venda Presencial',
-    atendente: '🧾 Acesso à tela de Lançar Comanda',
-    caixa:     '💰 Acesso ao Painel do Caixa',
+    admin:     ' Acesso ao painel administrativo completo',
+    vendedor:  ' Acesso à tela de Venda Presencial',
+    atendente: ' Acesso à tela de Lançar Comanda',
+    caixa:     ' Acesso ao Painel do Caixa',
 };
 
 function selecionarTipo(tipo) {
