@@ -73,6 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['id_staff']   = $id_staff;
                 $_SESSION['nome_staff'] = $staff['nome'];
                 $_SESSION['tipo_staff'] = 'admin';
+                $_SESSION['subdominio']    = $tenant_param;
+                 $_SESSION['subdominio']    = $tenant_param;
                 header('Location: admin.php');
                 exit;
             }
@@ -119,6 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['nome_vendedor'] = $staff['nome'];
                 $_SESSION['is_vendedor']   = true;
                 $_SESSION['nome_admin']    = $staff['nome'];
+                $_SESSION['subdominio']    = $tenant_param;
                 $_SESSION['id_admin']      = $tipo . '_' . $id_staff;
 
                 $mapa_tela    = ['vendedor' => 'venda_presencial', 'atendente' => 'atendente', 'caixa' => 'caixa'];
