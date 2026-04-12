@@ -64,3 +64,9 @@ function img_src(string $imagem): string {
     if (str_starts_with($imagem, 'http')) return $imagem;
     return 'uploads/' . $imagem;
 }
+function redirecionar_login() {
+    $sub = $_SESSION['subdominio'] ?? '';
+    $url = $sub ? 'login.php?tenant=' . urlencode($sub) : 'login.php';
+    header('Location: ' . $url);
+    exit;
+}
