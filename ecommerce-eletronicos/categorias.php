@@ -180,7 +180,7 @@ if (isset($_GET['editar'])) {
 
             <?php if (isset($_GET['nova']) && !$categoria_editar): ?>
             <div class="form-card">
-                <h3>➕ Nova Categoria</h3>
+                <h3> Nova Categoria</h3>
                 <form method="POST" action="categorias.php">
                     <input type="hidden" name="acao" value="nova">
                     <div class="form-row">
@@ -260,8 +260,8 @@ if (isset($_GET['editar'])) {
                             <td style="text-align:center"><span class="badge-qtd"><?= $cat['total_produtos'] ?></span></td>
                             <td style="text-align:center">
                                 <div class="tbl-actions">
-                                    <a href="categorias.php?editar=<?= $cat['id_categoria'] ?>" class="action-btn editar">✏️ Editar</a>
-                                    <button class="action-btn excluir" onclick="confirmarExclusao(<?= $cat['id_categoria'] ?>, '<?= htmlspecialchars(addslashes($cat['nome'])) ?>', <?= $cat['total_produtos'] ?>)">🗑️ Excluir</button>
+                                    <a href="categorias.php?editar=<?= $cat['id_categoria'] ?>" class="action-btn editar"> Editar</a>
+                                    <button class="action-btn excluir" onclick="confirmarExclusao(<?= $cat['id_categoria'] ?>, '<?= htmlspecialchars(addslashes($cat['nome'])) ?>', <?= $cat['total_produtos'] ?>)"> Excluir</button>
                                 </div>
                             </td>
                         </tr>
