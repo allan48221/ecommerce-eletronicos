@@ -1,21 +1,19 @@
 <?php
-// Salva tenant ANTES do database.php processar a sessão
-if (isset($_POST['tenant']) && !empty($_POST['tenant'])) {
-    if (session_status() === PHP_SESSION_NONE) session_start();
-    $_SESSION['tenant_subdominio_url'] = $_POST['tenant'];
-    $_SESSION['tenant_carregado'] = false;
-    session_write_close();
-}
-if (isset($_GET['tenant']) && !empty($_GET['tenant'])) {
-    if (session_status() === PHP_SESSION_NONE) session_start();
-    $_SESSION['tenant_subdominio_url'] = $_GET['tenant'];
-    $_SESSION['tenant_carregado'] = false;
-    session_write_close();
-}
-
+// 1. Carrega o banco PRIMEIRO (ele configura e inicia a sessão)
 require_once 'config/database.php';
 require_once 'config/tema.php';
 
+// 2. SÓ DEPOIS salva o tenant (sessão já está ativa e configurada)
+if (!empty($_POST['tenant'])) {
+    $_SESSION['tenant_subdominio_url'] = $_POST['tenant'];
+    $_SESSION['tenant_carregado'] = false;
+}
+if (!empty($_GET['tenant'])) {
+    $_SESSION['tenant_subdominio_url'] = $_GET['tenant'];
+    $_SESSION['tenant_carregado'] = false;
+}
+
+// 3. Resto do código continua igual...
 $mensagem      = '';
 $tipo_mensagem = '';
 
