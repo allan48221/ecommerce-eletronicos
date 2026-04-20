@@ -51,6 +51,14 @@ class DBSessionHandler implements SessionHandlerInterface {
 // =====================================================
 //  CONEXÃO — usa variáveis de ambiente (Render/Docker)
 // =====================================================
+// database.php — adicione isso na linha 53 (antes do ini_set)
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
+ini_set('session.gc_maxlifetime', 86400);
+
+
 ini_set('session.gc_maxlifetime', 86400); // 24 horas
 
 define('DB_HOST',     getenv('DB_HOST')     ?: 'localhost');
