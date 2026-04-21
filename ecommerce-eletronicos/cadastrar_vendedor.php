@@ -31,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'criar')
         $msg = 'A senha deve ter pelo menos 6 caracteres.';
         $tipo = 'danger';
     } else {
-        // Verifica usuario duplicado dentro do tenant
         if ($is_master) {
             $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ?");
             $chk->execute([$usuario]);
@@ -60,7 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'excluir
         if ($is_master) {
             $conn->prepare("DELETE FROM staff WHERE id_staff = ?")->execute([$id]);
         } else {
-            // Garante que só exclui staff do próprio tenant
             $conn->prepare("DELETE FROM staff WHERE id_staff = ? AND id_tenant = ?")->execute([$id, $id_tenant]);
         }
         $msg  = 'Usuario excluido.';
@@ -97,7 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
         $msg = 'Nome e usuario sao obrigatorios.';
         $tipo = 'danger';
     } else {
-        // Verifica usuario duplicado dentro do tenant
         if ($is_master) {
             $chk = $conn->prepare("SELECT id_staff FROM staff WHERE usuario = ? AND id_staff != ?");
             $chk->execute([$usuario, $id]);
@@ -140,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'editar'
     }
 }
 
-// ── LISTAR (filtrado por tenant) ──
+// ── LISTAR ──
 if ($is_master) {
     $todos = $conn->query("SELECT * FROM staff ORDER BY tipo ASC, nome ASC")->fetchAll();
 } else {
@@ -204,7 +201,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .tipo-pill input:checked + label { border-color: var(--primary,#2563eb); background: #eff6ff; color: var(--primary,#2563eb); }
 .tipo-pill input[value="admin"]:checked + label { border-color: #7c3aed; background: #ede9fe; color: #7c3aed; }
 
-/* Badge especial para admin */
 .tipo-pill label .admin-badge { display: inline-block; background: #7c3aed; color: #fff; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; margin-top: 2px; letter-spacing: .3px; }
 
 .btn-criar { width: 100%; padding: 14px; background: linear-gradient(135deg, var(--primary,#2563eb), var(--primary-dark,#1e40af)); color: #fff; border: none; border-radius: 11px; font-size: 15px; font-weight: 700; font-family: 'Sora', sans-serif; cursor: pointer; margin-top: 4px; transition: .2s; }
@@ -214,7 +210,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 
 .vendedor-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f8fafc; }
 .vendedor-item:last-child { border-bottom: none; }
-.v-avatar { width: 42px; height: 42px; min-width: 42px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; flex-shrink: 0; }
 .v-info { flex: 1; min-width: 0; }
 .v-nome    { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0f172a; }
 .v-usuario { font-size: 12px; color: #6b7280; margin-top: 2px; }
@@ -230,11 +225,9 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .vbtn-excluir:hover { background: #fee2e2; }
 .vvazio { text-align: center; color: #94a3b8; font-size: 14px; padding: 16px 0; }
 
-/* Card de admin com destaque especial */
 .vcard.admin-card { border-color: #c4b5fd; }
 .vcard.admin-card .vcard-head { background: #f5f3ff; border-color: #ddd6fe; }
 
-/* Info box admin */
 .admin-info-box { background: #f5f3ff; border: 1.5px solid #ddd6fe; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #5b21b6; display: flex; align-items: center; gap: 8px; }
 .admin-info-box strong { font-weight: 700; }
 
@@ -264,7 +257,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 
     <div class="vhero">
         <h1>Equipe</h1>
-        <p>Gerencie caixa/balcão, atendentes, caixas e administradores do sistema</p>
+        <p>Gerencie caixa/balcao, atendentes, caixas e administradores do sistema</p>
     </div>
 
     <div class="vtipo-grid">
@@ -292,7 +285,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
                     <div class="tipo-pills">
                         <div class="tipo-pill">
                             <input type="radio" name="tipo_staff" id="tp-vendedor" value="vendedor" checked>
-                            <label for="tp-vendedor">Caixa/balcão</label>
+                            <label for="tp-vendedor">Caixa/balcao</label>
                         </div>
                         <div class="tipo-pill">
                             <input type="radio" name="tipo_staff" id="tp-atendente" value="atendente">
@@ -343,8 +336,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
         <div class="vcard-body">
             <?php if ($t === 'admin'): ?>
             <div class="admin-info-box">
-                <span>&#128274;</span>
-                <span>A senha deste usuario autoriza <strong>cancelamentos de comanda</strong> e <strong>remoção de itens</strong> no caixa.</span>
+                <span>A senha deste usuario autoriza <strong>cancelamentos de comanda</strong> e <strong>remocao de itens</strong> no caixa.</span>
             </div>
             <?php endif; ?>
             <?php if (empty($lista)): ?>
@@ -352,9 +344,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
             <?php else: ?>
                 <?php foreach ($lista as $v): ?>
                 <div class="vendedor-item">
-                    <div class="v-avatar" style="background:linear-gradient(135deg,<?= $cfg['cor'] ?>,<?= $cfg['cor'] ?>cc);">
-                        <?= strtoupper(substr($v['nome'], 0, 1)) ?>
-                    </div>
                     <div class="v-info">
                         <div class="v-nome"><?= htmlspecialchars($v['nome']) ?></div>
                         <div class="v-usuario">@<?= htmlspecialchars($v['usuario']) ?></div>
