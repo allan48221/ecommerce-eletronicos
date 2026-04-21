@@ -372,18 +372,6 @@ if ($res_cores) {
                 <?php if ($is_master || tela_liberada('novo_produto')): ?>
                 <a href="cadastro_produto.php" class="action-btn">Novo Produto</a>
                 <?php endif; ?>
-                <?php if ($is_master || tela_liberada('pedidos')): ?>
-                <a href="#secao-pedidos" class="action-btn"
-                   style="<?= $count_pendentes > 0 ? 'border-color:#ffc107;color:#856404;background:#fffbeb' : '' ?>">
-                    Pedidos
-                    <?php if ($count_pendentes > 0): ?>
-                        <span style="background:#e74c3c;color:white;border-radius:50%;
-                                     padding:1px 5px;font-size:0.65rem;font-weight:800;margin-left:3px">
-                            <?= $count_pendentes ?>
-                        </span>
-                    <?php endif; ?>
-                </a>
-                <?php endif; ?>
                 <?php if ($is_master || tela_liberada('categorias')): ?>
                 <a href="categorias.php" class="action-btn">Categorias</a>
                 <?php endif; ?>
