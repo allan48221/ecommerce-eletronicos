@@ -98,18 +98,11 @@ $locais = $stmt_locais->fetchAll(PDO::FETCH_ASSOC);
 // POST: Salvar dados da empresa
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $stmtLogoAtual = $conn->prepare("SELECT logo FROM empresa WHERE id_tenant = ? LIMIT 1");
-    $stmtLogoAtual->execute([$id_tenant]);
-    $logoAtual = $stmtLogoAtual->fetchColumn() ?: '';
-
     $campos = [
         'id_tenant'           => $id_tenant,
         'nome_empresa'        => trim($_POST['nome_empresa']        ?? ''),
         'nome_fantasia'       => trim($_POST['nome_fantasia']       ?? ''),
         'cnpj'                => preg_replace('/\D/', '', $_POST['cnpj'] ?? ''),
-        'telefone'            => trim($_POST['telefone']            ?? ''),
-        'celular'             => trim($_POST['celular']             ?? ''),
-        'email'               => trim($_POST['email']               ?? ''),
         'nome_responsavel'    => trim($_POST['nome_responsavel']    ?? ''),
         'cep'                 => preg_replace('/\D/', '', $_POST['cep'] ?? ''),
         'endereco'            => trim($_POST['endereco']            ?? ''),
@@ -118,45 +111,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'bairro'              => trim($_POST['bairro']              ?? ''),
         'cidade'              => trim($_POST['cidade']              ?? ''),
         'uf'                  => strtoupper(trim($_POST['uf']       ?? '')),
-        'site'                => trim($_POST['site']                ?? ''),
-        'instagram'           => trim($_POST['instagram']           ?? ''),
-        'whatsapp'            => preg_replace('/\D/', '', $_POST['whatsapp'] ?? ''),
-        'horario_atendimento' => trim($_POST['horario_atendimento'] ?? ''),
-        'formas_pagamento'    => trim($_POST['formas_pagamento']    ?? ''),
         'descricao_loja'      => trim($_POST['descricao_loja']      ?? ''),
-        'logo'                => $logoAtual,
+        'formas_pagamento'    => trim($_POST['formas_pagamento']    ?? ''),
     ];
-
-    if (!empty($_FILES['logo']['tmp_name'])) {
-        $ext     = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-        if (in_array($ext, $allowed) && $_FILES['logo']['size'] <= 2 * 1024 * 1024) {
-            try {
-                require_once __DIR__ . '/config/cloudinary.php';
-                $url_logo = cloudinary_upload($_FILES['logo']['tmp_name'], 'logos');
-                $campos['logo'] = $url_logo;
-            } catch (Exception $e) {
-                $msg = 'Erro ao enviar logo: ' . $e->getMessage();
-                $tipo_msg = 'danger';
-            }
-        } else {
-            $msg = 'Logo invalida (max 2MB, formatos: JPG, PNG, WEBP).';
-            $tipo_msg = 'danger';
-        }
-    }
 
     if (empty($campos['nome_empresa'])) {
         $msg = 'O nome da empresa e obrigatorio.'; $tipo_msg = 'danger';
-    } elseif ($tipo_msg !== 'danger') {
+    } else {
         try {
             $conn->prepare("
                 UPDATE empresa SET
                     nome_empresa         = :nome_empresa,
                     nome_fantasia        = :nome_fantasia,
                     cnpj                 = :cnpj,
-                    telefone             = :telefone,
-                    celular              = :celular,
-                    email                = :email,
                     nome_responsavel     = :nome_responsavel,
                     cep                  = :cep,
                     endereco             = :endereco,
@@ -165,13 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     bairro               = :bairro,
                     cidade               = :cidade,
                     uf                   = :uf,
-                    site                 = :site,
-                    instagram            = :instagram,
-                    whatsapp             = :whatsapp,
-                    horario_atendimento  = :horario_atendimento,
-                    formas_pagamento     = :formas_pagamento,
                     descricao_loja       = :descricao_loja,
-                    logo                 = :logo,
+                    formas_pagamento     = :formas_pagamento,
                     atualizado_em        = NOW()
                 WHERE id_tenant = :id_tenant
             ")->execute($campos);
@@ -196,12 +158,6 @@ function fmtCnpj(string $v): string {
 function fmtCep(string $v): string {
     $v = preg_replace('/\D/', '', $v);
     if (strlen($v) === 8) return preg_replace('/(\d{5})(\d{3})/', '$1-$2', $v);
-    return $v;
-}
-function fmtWpp(string $v): string {
-    $v = preg_replace('/\D/', '', $v);
-    if (strlen($v) === 11) return preg_replace('/(\d{2})(\d{5})(\d{4})/', '($1) $2-$3', $v);
-    if (strlen($v) === 10) return preg_replace('/(\d{2})(\d{4})(\d{4})/', '($1) $2-$3', $v);
     return $v;
 }
 ?>
@@ -255,19 +211,8 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .emp-field textarea::placeholder { color:#94a3b8; }
 .emp-field .hint { font-size:11px; color:#94a3b8; }
 
-.emp-input-prefix { display:flex; align-items:center; border:1.5px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#f8fafc; transition:.2s; }
-.emp-input-prefix:focus-within { border-color:var(--primary,#2563eb); background:#fff; box-shadow:0 0 0 3px rgba(37,99,235,.08); }
-.emp-prefix-label { padding:10px 12px; font-size:13px; font-weight:600; color:#94a3b8; background:#f1f5f9; border-right:1.5px solid #e2e8f0; white-space:nowrap; }
-.emp-input-prefix input { border:none !important; border-radius:0 !important; background:transparent !important; box-shadow:none !important; flex:1; padding:10px 12px; font-size:14px; font-family:'Sora',sans-serif; outline:none; color:#0f172a; }
-
 .span-2 { grid-column: span 2; }
 @media (max-width:600px) { .span-2 { grid-column: span 1; } }
-
-.emp-preview { background:#1e1b4b; border-radius:12px; padding:20px 24px; margin-top:4px; }
-.emp-preview-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:#94a3b8; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
-.emp-preview-inner { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; }
-.emp-preview-col h4 { font-size:13px; font-weight:700; color:#fff; margin-bottom:6px; }
-.emp-preview-col p, .emp-preview-col a { font-size:12px; color:rgba(255,255,255,.7); display:block; margin-bottom:3px; text-decoration:none; }
 
 .emp-pag-grid { display:flex; flex-wrap:wrap; gap:8px; }
 .emp-pag-pill { position:relative; }
@@ -279,13 +224,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 .emp-btn-save:hover { opacity:.9; transform:translateY(-1px); }
 
 .emp-cnpj-atual { display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1e40af; font-size:12px; font-weight:700; padding:4px 12px; border-radius:20px; margin-top:4px; }
-
-.emp-logo-preview { display:flex; align-items:center; gap:16px; padding:14px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:12px; margin-bottom:10px; }
-.emp-logo-preview img { max-height:64px; max-width:180px; object-fit:contain; border-radius:8px; }
-.emp-logo-preview .emp-logo-info { font-size:12px; color:#64748b; }
-.emp-logo-preview .emp-logo-info strong { display:block; color:#0f172a; margin-bottom:2px; }
-.emp-file-input { padding:10px 13px; border:1.5px dashed #cbd5e1; border-radius:10px; font-size:13px; font-family:'Sora',sans-serif; background:#f8fafc; cursor:pointer; width:100%; }
-.emp-file-input:hover { border-color:var(--primary,#2563eb); background:#eff6ff; }
 
 /* Locais permitidos */
 .local-card { background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:12px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px; transition:.2s; }
@@ -361,87 +299,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
             </div>
         </div>
 
-        <!-- LOGO -->
-        <div class="emp-card">
-            <div class="emp-card-head">
-                <div class="ico">LG</div>
-                <h2>Logo da Empresa <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;">(exibida no topo da loja)</span></h2>
-            </div>
-            <div class="emp-card-body">
-                <?php if (!empty($empresa['logo'])): ?>
-                <div class="emp-logo-preview">
-                    <img src="<?= img_src($empresa['logo']) ?>" alt="Logo atual">
-                    <div class="emp-logo-info">
-                        <strong>Logo atual</strong>
-                        Para trocar, selecione uma nova imagem abaixo.
-                    </div>
-                </div>
-                <?php endif; ?>
-                <div class="emp-field">
-                    <label><?= !empty($empresa['logo']) ? 'Trocar Logo' : 'Enviar Logo' ?></label>
-                    <input type="file" name="logo" accept="image/jpeg,image/png,image/webp,image/gif" class="emp-file-input">
-                    <span class="hint">Formatos aceitos: JPG, PNG, WEBP. Tamanho maximo: 2MB. Recomendado: fundo transparente (PNG).</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- CONTATO -->
-        <div class="emp-card">
-            <div class="emp-card-head">
-                <div class="ico">CT</div>
-                <h2>Contato &amp; Atendimento</h2>
-            </div>
-            <div class="emp-card-body">
-                <div class="emp-grid three">
-                    <div class="emp-field">
-                        <label>Telefone</label>
-                        <input type="text" name="telefone" id="inp-tel" value="<?= htmlspecialchars($empresa['telefone'] ?? '') ?>" placeholder="(00) 0000-0000" maxlength="15">
-                    </div>
-                    <div class="emp-field">
-                        <label>Celular (exibido no rodape)</label>
-                        <input type="text" name="celular" id="inp-cel" value="<?= htmlspecialchars($empresa['celular'] ?? '') ?>" placeholder="(00) 00000-0000" maxlength="16">
-                    </div>
-                    <div class="emp-field">
-                        <label>E-mail</label>
-                        <input type="email" name="email" value="<?= htmlspecialchars($empresa['email'] ?? '') ?>" placeholder="contato@empresa.com.br">
-                    </div>
-                    <div class="emp-field">
-                        <label>Horario de Atendimento <span style="font-weight:400;text-transform:none;letter-spacing:0;">(rodape)</span></label>
-                        <input type="text" name="horario_atendimento" value="<?= htmlspecialchars($empresa['horario_atendimento'] ?? '') ?>" placeholder="Ex: Seg-Sex: 9h as 18h">
-                    </div>
-                    <div class="emp-field span-2">
-                        <label>Site</label>
-                        <input type="text" name="site" value="<?= htmlspecialchars($empresa['site'] ?? '') ?>" placeholder="https://www.empresa.com.br">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- REDES SOCIAIS -->
-        <div class="emp-card">
-            <div class="emp-card-head">
-                <div class="ico">RS</div>
-                <h2>Redes Sociais</h2>
-            </div>
-            <div class="emp-card-body">
-                <div class="emp-grid">
-                    <div class="emp-field">
-                        <label>Instagram</label>
-                        <div class="emp-input-prefix">
-                            <span class="emp-prefix-label">instagram.com/</span>
-                            <input type="text" name="instagram" value="<?= htmlspecialchars(ltrim($empresa['instagram'] ?? '', '@/')) ?>" placeholder="nomedapagina">
-                        </div>
-                        <span class="hint">So o nome da pagina, sem @ nem URL completa</span>
-                    </div>
-                    <div class="emp-field">
-                        <label>WhatsApp <span style="font-weight:400;text-transform:none;letter-spacing:0;">(numero para contato)</span></label>
-                        <input type="text" name="whatsapp" id="inp-wpp" value="<?= fmtWpp($empresa['whatsapp'] ?? '') ?>" placeholder="(91) 99999-9999" maxlength="16">
-                        <span class="hint">Usado no link wa.me do rodape</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- FORMAS DE PAGAMENTO -->
         <div class="emp-card">
             <div class="emp-card-head">
@@ -502,38 +359,6 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
                         <label>UF</label>
                         <input type="text" name="uf" id="inp-uf" value="<?= htmlspecialchars($empresa['uf'] ?? '') ?>" placeholder="PA" maxlength="2" style="text-transform:uppercase;">
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- PREVIEW DO RODAPE -->
-        <div class="emp-card">
-            <div class="emp-card-head">
-                <div class="ico">PV</div>
-                <h2>Preview do rodape da loja</h2>
-            </div>
-            <div class="emp-card-body" style="padding:12px 16px;">
-                <div class="emp-preview">
-                    <div class="emp-preview-title">Rodape da loja (preview em tempo real)</div>
-                    <div class="emp-preview-inner">
-                        <div class="emp-preview-col" style="flex:1;min-width:160px;">
-                            <h4 id="pv-nome">-</h4>
-                            <p id="pv-desc" style="font-size:11px;"></p>
-                        </div>
-                        <div class="emp-preview-col" style="flex:1;min-width:140px;">
-                            <h4>Atendimento</h4>
-                            <p id="pv-cel"></p>
-                            <p id="pv-email"></p>
-                            <p id="pv-horario"></p>
-                            <p id="pv-cidade"></p>
-                        </div>
-                        <div class="emp-preview-col" style="flex:1;min-width:120px;">
-                            <h4>Redes Sociais</h4>
-                            <a id="pv-insta" href="#" target="_blank"></a>
-                            <a id="pv-wpp"   href="#" target="_blank"></a>
-                        </div>
-                    </div>
-                    <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.1);font-size:11px;color:rgba(255,255,255,.5);" id="pv-pag"></div>
                 </div>
             </div>
         </div>
@@ -665,15 +490,6 @@ document.getElementById('inp-cnpj').addEventListener('input', function() {
     v = v.replace(/(\d{4})(\d)/,'$1-$2');
     this.value = v;
 });
-function maskTel(el,cel){
-    let v=el.value.replace(/\D/g,'').slice(0,cel?11:10);
-    if(cel){v=v.replace(/(\d{2})(\d)/,'($1) $2');v=v.replace(/(\d{5})(\d)/,'$1-$2');}
-    else{v=v.replace(/(\d{2})(\d)/,'($1) $2');v=v.replace(/(\d{4})(\d)/,'$1-$2');}
-    el.value=v;
-}
-document.getElementById('inp-tel').addEventListener('input',function(){maskTel(this,false);});
-document.getElementById('inp-cel').addEventListener('input',function(){maskTel(this,true);});
-document.getElementById('inp-wpp').addEventListener('input',function(){maskTel(this,true);});
 
 document.getElementById('inp-cep').addEventListener('input', function() {
     let v=this.value.replace(/\D/g,'').slice(0,8);
@@ -690,7 +506,6 @@ async function buscarCep(cep){
             document.getElementById('inp-cidade').value=d.localidade||'';
             document.getElementById('inp-uf').value=d.uf||'';
             document.getElementById('inp-numero').focus();
-            atualizarPreview();
         }
     }catch(e){}
 }
@@ -698,45 +513,8 @@ async function buscarCep(cep){
 function syncPagamento(){
     const checks=document.querySelectorAll('input[name="formas_pagamento_arr[]"]:checked');
     document.getElementById('hid-formas-pag').value=Array.from(checks).map(c=>c.value).join(', ');
-    atualizarPreview();
 }
 document.querySelectorAll('input[name="formas_pagamento_arr[]"]').forEach(c=>c.addEventListener('change',syncPagamento));
-
-function vv(id){return (document.querySelector('[name="'+id+'"]')||{}).value||'';}
-function atualizarPreview(){
-    const nome    = vv('nome_fantasia')||vv('nome_empresa');
-    const desc    = vv('descricao_loja');
-    const cel     = vv('celular');
-    const email   = vv('email');
-    const horario = vv('horario_atendimento');
-    const cidade  = vv('cidade');
-    const uf      = vv('uf');
-    const insta   = vv('instagram').replace(/^@/,'').replace(/^.*instagram\.com\//,'').trim();
-    const wpp     = vv('whatsapp').replace(/\D/g,'');
-    const pag     = document.getElementById('hid-formas-pag').value;
-
-    document.getElementById('pv-nome').textContent    = nome    || '-';
-    document.getElementById('pv-desc').textContent    = desc    || '';
-    document.getElementById('pv-cel').textContent     = cel     ? 'Tel: '+cel : '';
-    document.getElementById('pv-email').textContent   = email   ? 'Email: '+email : '';
-    document.getElementById('pv-horario').textContent = horario ? 'Horario: '+horario : '';
-    document.getElementById('pv-cidade').textContent  = (cidade||uf) ? 'Local: '+(cidade||'')+(uf?' - '+uf:'') : '';
-
-    const elInsta = document.getElementById('pv-insta');
-    if(insta){ elInsta.textContent='Instagram: @'+insta; elInsta.href='https://instagram.com/'+insta; }
-    else { elInsta.textContent=''; }
-
-    const elWpp = document.getElementById('pv-wpp');
-    if(wpp){ elWpp.textContent='WhatsApp'; elWpp.href='https://wa.me/55'+wpp; }
-    else { elWpp.textContent=''; }
-
-    document.getElementById('pv-pag').textContent = pag ? 'Pagamentos: '+pag : '';
-}
-
-document.querySelectorAll('.emp-field input, .emp-field textarea').forEach(el=>{
-    el.addEventListener('input', atualizarPreview);
-});
-atualizarPreview();
 </script>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
