@@ -264,7 +264,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
 
     <div class="vhero">
         <h1>Equipe</h1>
-        <p>Gerencie vendedores, atendentes, caixas e administradores do sistema</p>
+        <p>Gerencie caixa/balcão, atendentes, caixas e administradores do sistema</p>
     </div>
 
     <div class="vtipo-grid">
@@ -292,7 +292,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
                     <div class="tipo-pills">
                         <div class="tipo-pill">
                             <input type="radio" name="tipo_staff" id="tp-vendedor" value="vendedor" checked>
-                            <label for="tp-vendedor">Vendedor</label>
+                            <label for="tp-vendedor">Caixa/balcão</label>
                         </div>
                         <div class="tipo-pill">
                             <input type="radio" name="tipo_staff" id="tp-atendente" value="atendente">
