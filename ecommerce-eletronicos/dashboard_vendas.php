@@ -338,16 +338,16 @@ function variacao($atual, $anterior) {
 
         <div class="dash-grid-3">
             <div class="dash-card">
-                <div class="dash-card-title">📈 Vendas por Dia</div>
+                <div class="dash-card-title"> Vendas por Dia</div>
                 <?php if (count($grafico_dados) > 0): ?><canvas id="grafico-vendas" height="120"></canvas>
                 <?php else: ?><div class="empty-dash">Nenhuma venda no periodo.</div><?php endif; ?>
             </div>
             <div class="dash-card">
-                <div class="dash-card-title">💳 Formas de Pagamento</div>
+                <div class="dash-card-title"> Formas de Pagamento</div>
                 <?php if (count($pagamentos) > 0): foreach ($pagamentos as $pag): ?>
                     <div class="pag-item">
                         <div style="display:flex;align-items:center;">
-                            <span class="pag-icone">💰</span>
+                            <span class="pag-icone"></span>
                             <div><div class="pag-nome"><?= htmlspecialchars($pag['forma_pagamento']) ?></div><div class="pag-qtd"><?= $pag['qtd'] ?> pedido(s)</div></div>
                         </div>
                         <div class="pag-valor">R$ <?= number_format($pag['total'], 2, ',', '.') ?></div>
@@ -358,7 +358,7 @@ function variacao($atual, $anterior) {
 
         <div class="dash-grid-3">
             <div class="dash-card">
-                <div class="dash-card-title">🏆 Produtos Mais Vendidos</div>
+                <div class="dash-card-title"> Produtos Mais Vendidos</div>
                 <?php if (count($top_produtos) > 0): ?>
                 <table class="ranking-table">
                     <thead><tr><th>Produto</th><th class="col-cat">Categoria</th><th style="text-align:center">Qtd</th><th style="text-align:right">Receita</th></tr></thead>
@@ -376,7 +376,7 @@ function variacao($atual, $anterior) {
                 <?php else: ?><div class="empty-dash">Nenhuma venda no periodo.</div><?php endif; ?>
             </div>
             <div class="dash-card">
-                <div class="dash-card-title">📂 Categorias</div>
+                <div class="dash-card-title"> Categorias</div>
                 <?php if (count($categorias) > 0):
                     $max_cat = max(array_column($categorias, 'receita'));
                     $cores = ['var(--primary)','var(--success)','var(--purple)','var(--warning)','var(--danger)','#06b6d4'];
@@ -393,7 +393,7 @@ function variacao($atual, $anterior) {
         </div>
 
         <div class="dash-card">
-            <div class="dash-card-title">📋 Ultimos Pedidos</div>
+            <div class="dash-card-title"> Ultimos Pedidos</div>
             <?php if (count($ultimos_pedidos) > 0):
                 $status_class = ['pendente'=>'badge-pendente','aprovado'=>'badge-aprovado','enviado'=>'badge-aprovado','entregue'=>'badge-aprovado','cancelado'=>'badge-cancelado'];
                 foreach ($ultimos_pedidos as $ped):
@@ -414,7 +414,7 @@ function variacao($atual, $anterior) {
 
         <?php if (!empty($vendas_atendentes)): ?>
         <div class="dash-card" style="margin-top:0.75rem;margin-bottom:0;">
-            <div class="dash-card-title">👥 Vendas por Atendente / Caixa</div>
+            <div class="dash-card-title"> Vendas por Atendente / Caixa</div>
             <div style="overflow-x:auto;">
                 <table class="ranking-table">
                     <thead><tr><th>Operador</th><th style="text-align:center;">Comandas</th><th style="text-align:center;">Itens</th><th style="text-align:right;">Total Vendido</th><th style="text-align:center;">Detalhes</th></tr></thead>
