@@ -136,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
             } else {
-                $labels        = ['vendedor' => 'Vendedor', 'atendente' => 'Atendente', 'caixa' => 'Caixa'];
+               $labels = ['vendedor' => 'Caixa/Balcão', 'atendente' => 'Atendente', 'caixa' => 'Caixa'];
                 $mensagem      = ($labels[$tipo_login] ?? 'Usuário') . ' não encontrado, senha incorreta ou acesso desativado.';
                 $tipo_mensagem = 'danger';
             }
@@ -196,7 +196,7 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
             <?php
             $telas_tipo = ['admin' => 'admin', 'vendedor' => 'venda_presencial', 'atendente' => 'atendente', 'caixa' => 'caixa'];
             $icons  = ['admin'=>'','vendedor'=>'','atendente'=>'','caixa'=>''];
-            $labels = ['admin'=>'Admin','vendedor'=>'Vendedor','atendente'=>'Atendente','caixa'=>'Caixa'];
+          $labels = ['admin'=>'Admin','vendedor'=>'Caixa/Balcão','atendente'=>'Atendente','caixa'=>'Caixa'];
             foreach (['admin','vendedor','atendente','caixa'] as $tipo):
                 $liberado = ($tipo === 'admin') || tela_liberada($telas_tipo[$tipo]);
                 $ativo    = $aba_ativa === $tipo ? 'ativo' : '';
@@ -255,7 +255,7 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
 <script>
 const hints = {
     admin:     ' Acesso ao painel administrativo completo',
-    vendedor:  ' Acesso à tela de Venda Presencial',
+    vendedor:  ' Acesso à tela de Caixa/Balcão',
     atendente: ' Acesso à tela de Lançar Comanda',
     caixa:     ' Acesso ao Painel do Caixa',
 };
