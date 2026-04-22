@@ -358,14 +358,6 @@ if ($res_cores) {
         <a href="<?= $url_ver_loja ?>" class="btn-ver-loja-mobile">Ver Loja</a>
         <?php endif; ?>
 
-        <div class="visitantes-card">
-            <div class="vis-icon"></div>
-            <div class="vis-info">
-                <div class="vis-numero" id="contador-visitantes">--</div>
-                <div class="vis-label"><span class="vis-dot"></span>Pessoas que ja acessaram o site</div>
-            </div>
-        </div>
-
         <div class="card">
             <h2 class="card-title">Acoes</h2>
             <div class="quick-actions">
