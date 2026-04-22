@@ -370,9 +370,9 @@ if ($res_cores) {
                 <?php if ($is_master || tela_liberada('dashboard_vendas')): ?>
                 <a href="dashboard_vendas.php" class="action-btn">Dashboard de Vendas</a>
                 <?php endif; ?>
-                <?php if ($is_master || tela_liberada('venda_presencial')): ?>
-                <a href="venda_presencial.php" class="action-btn">Venda Presencial</a>
-                <?php endif; ?>
+                <?php if ($is_master || (tela_liberada('venda_presencial') && str_contains($plano_admin, 'pro'))): ?>
+<a href="venda_presencial.php" class="action-btn">Venda Presencial</a>
+<?php endif; ?>
                 <?php if ($is_master || tela_liberada('cancelamentos')): ?>
                 <a href="cancelamentos.php" class="action-btn">Cancelamentos</a>
                 <?php endif; ?>
