@@ -182,7 +182,7 @@ $aba_ativa = $_POST['tipo_login'] ?? 'admin';
 <body>
 <div class="login-container">
     <div class="card">
-        <a href="index.php" class="btn-seta">&#8592;</a>
+       
 
         <h1 class="card-title" style="text-align:center;margin:1rem auto 1.5rem;display:block;padding:0;color:var(--secondary);">
             Fazer Login
