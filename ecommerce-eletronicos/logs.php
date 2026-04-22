@@ -262,7 +262,7 @@ $total_comandas   = count(array_filter($logs, fn($l) => in_array($l['tipo'], $ti
         .pill-laranja    { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
         .pill-laranja.ativo, .pill-laranja:hover { background: #f97316; color: #fff; border-color: #f97316; }
 
-        .contagem { font-size: 13px; color: #64748b; font-weight: 600; margin-bottom: 16px; }
+        .contagem { font-size: 13px; color: #ffffff; font-weight: 600; margin-bottom: 16px; }
         .contagem span { color: var(--primary,#2563eb); font-weight: 800; }
 
         .timeline { position: relative; padding-left: 28px; }
@@ -323,7 +323,7 @@ $total_comandas   = count(array_filter($logs, fn($l) => in_array($l['tipo'], $ti
 
         .data-sep       { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; }
         .data-sep-linha { flex: 1; height: 1px; background: #e2e8f0; }
-        .data-sep-label { font-size: 12px; font-weight: 700; color: #64748b; white-space: nowrap; background: var(--dash-bg,#f1f5f9); padding: 0 8px; }
+        .data-sep-label { font-size: 12px; font-weight: 700; color: #ffffff; white-space: nowrap; background: var(--dash-bg,#f1f5f9); padding: 0 8px; }
 
         .vazio     { text-align: center; padding: 64px 16px; color: #94a3b8; }
         .vazio-txt { font-size: 15px; font-weight: 600; margin-top: 12px; }
