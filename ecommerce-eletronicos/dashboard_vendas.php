@@ -365,7 +365,7 @@ function variacao($atual, $anterior) {
                     <tbody>
                         <?php foreach ($top_produtos as $prod): ?>
                         <tr>
-                            <td><div class="prod-info-mini"><img src="uploads/<?= htmlspecialchars($prod['imagem'] ?: 'placeholder.jpg') ?>" class="prod-img-mini" onerror="this.src='uploads/placeholder.jpg'"><span style="font-weight:600;"><?= htmlspecialchars($prod['nome']) ?></span></div></td>
+                           <td><span style="font-weight:600;"><?= htmlspecialchars($prod['nome']) ?></span></td>
                             <td class="col-cat" style="color:var(--gray);"><?= htmlspecialchars($prod['categoria'] ?? '-') ?></td>
                             <td style="text-align:center;font-weight:700;color:var(--primary);"><?= $prod['qtd_vendida'] ?></td>
                             <td style="text-align:right;font-weight:700;color:var(--success);">R$ <?= number_format($prod['receita'], 2, ',', '.') ?></td>
