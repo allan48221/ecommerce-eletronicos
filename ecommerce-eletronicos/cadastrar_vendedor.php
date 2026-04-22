@@ -299,7 +299,7 @@ body { font-family: 'Sora', sans-serif; background: var(--dash-bg, #f1f5f9); min
                             <input type="radio" name="tipo_staff" id="tp-admin" value="admin">
                             <label for="tp-admin">
                                 Admin
-                                <span class="admin-badge">CANCEL</span>
+                                <span class="admin-badge"></span>
                             </label>
                         </div>
                     </div>
